@@ -1,0 +1,232 @@
+---
+title: "Bootstrap aggregated sparse FPCA for classification"
+author: "Hyunsung Kim"
+date: Febrary 21, 2020
+institute: Department of Statistics \newline Chung-Ang University
+fonttheme: "professionalfonts"
+header-includes:
+   - \usepackage{multirow}
+output:
+  beamer_presentation:
+    theme: "metropolis"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+library(tidyverse)
+library(fdapace)
+library(reshape2)
+library(gridExtra)
+```
+
+
+# Simulation studies 1
+
+## Simulation studies 1
+
+- [*Probability-enhanced effective dimension reduction for classifying sparse functional data* (Yao *et al.*)](https://link.springer.com/content/pdf/10.1007%2Fs11749-015-0470-2.pdf)
+- 3 simulation models
+$$
+\begin{alignedat}{2}
+  &\text{Model \MakeUppercase{\romannumeral 2}: } && f(x) = \exp(\langle \beta_1, X \rangle / 2) - 1, \\
+  &\text{Model \MakeUppercase{\romannumeral 4}: } && f(x) = \arctan(\pi \langle \beta_1, X \rangle) + \exp(\langle \beta_2, X \rangle / 3) - 1, \\
+  &\text{Model New: } && f(x) = \arctan(\pi \langle \beta_1, X \rangle / 4).
+\end{alignedat}
+$$
+- 700 curves are generated with 200 training and 500 test set.
+- Bagged classifers are obtained from 100 bootstrap resamples.
+- 100 Monte Carlo repetitions for each model
+
+
+## Simulation studies 1
+
+```{r, include=FALSE}
+sim <- function(model="A") {
+  set.seed(1)
+  n <- 700   # number of observations
+  j <- 1:50  # number of basis
+  
+  # parameters when generate class label
+  b <- matrix(ifelse(j <= 2, 1, (j-2)^(-3)), ncol=1)
+  
+  ## generate curves
+  data <- list()
+  for (i in 1:n) {
+    # random sparsify
+    num.obs <- sample(10:20, 1)
+    t <- sort(runif(num.obs, 0, 10))
+    
+    # 201~700 are test set
+    if (i > 200) {
+      range.train <- range(unlist(data$Lt[1:200]))
+      while( (max(t) > range.train[2]) | (min(t) < range.train[1]) ) {
+        t <- sort(runif(num.obs, 0, 10))
+      }
+    }
+    
+    # eigenfunctions
+    phi <- sapply(j, function(x){
+      if (x %% 2 == 0) {
+        sqrt(1/5)*sin(pi*t*x/5)
+      } else {
+        sqrt(1/5)*cos(pi*t*x/5)
+      }
+    })
+    
+    # generate PC scores
+    xi <- sapply(j, function(x){ rnorm(1, 0, sqrt( x^(-1.5) )) })
+    
+    # parameters when generate class label
+    beta.1 <- phi %*% b
+    beta.2 <- matrix(sqrt(3/10)*(t/5-1), ncol=1)
+    
+    # measurement error
+    eps <- rnorm(num.obs, 0, sqrt(0.1))
+    
+    # generate the curve
+    X <- xi %*% t(phi) + eps
+    
+    # generate class label
+    eps <- rnorm(1, 0, sqrt(0.1))   # model error
+    
+    if (model == "A") {
+      fx <- exp((X %*% beta.1)/2)-1   # model 2
+    } else if (model == "B") {
+      fx <- atan(pi*(X %*% beta.1)) + exp((X %*% beta.2)/3) - 1    # model 4
+    } else if (model == "C") {
+      fx <- atan(pi*(X %*% beta.1)/4)
+    }
+
+    y <- factor(ifelse(fx + eps < 0, 0, 1), levels=c(0, 1))
+    
+    data$id[[i]] <- rep(i, num.obs)
+    data$y[[i]] <- rep(y, num.obs)
+    data$Lt[[i]] <- t
+    data$Ly[[i]] <- X
+  }
+  
+  data <- data.frame( sapply(data, unlist) )
+  colnames(data) <- c("id","y","time","val")
+  data$y <- factor(data$y - 1, levels = c(0, 1))
+  
+  return(data)
+}
+
+plot.curve <- function(data, title="title") {
+  ggplot(data, aes(x=time, y=val, group=id, color=y)) +
+  geom_line(size=0.1) +
+  xlab("Time") +
+  ylab("") +
+  ggtitle(title) +
+  theme_bw() +
+  theme(legend.position = "none")
+}
+```
+
+```{r fig.cap="The simulated data obtained from 3 models", fig.dim=c(7,3), warning=F}
+# plot the generated curves
+data <- sim(model="A")
+r <- range(data$val)
+p1 <- plot.curve(data, "Model 2") + ylim(r[1], r[2])
+
+data <- sim(model="B")
+p2 <- plot.curve(data, "Model 4") + ylim(r[1], r[2])
+
+data <- sim(model="C")
+p3 <- plot.curve(data, "Model New") + ylim(r[1], r[2])
+
+grid.arrange(p1, p2, p3, nrow=1)
+```
+
+
+## Results of simulation studies 1
+
+\begin{table}[ht]
+  \caption{The average classification error with standard error in percentage from 100 Monte Carlo repetitions for 3 models}
+  \centering
+  \tiny
+  \begin{tabular}{cccccccc}
+    \hline
+          &        & Logistic   & SVM      & SVM        &     &     & Naive \\
+    Model & Method & Regression & (Linear) & (Gaussian) & LDA & QDA & Bayes \\ 
+    \hline
+    \multirow{3}{*}{\MakeUppercase{\romannumeral 2}} & Single        & 16.7 (2.33) & 16.8 (2.20) & 17.5 (2.76) & 16.6 (2.30) & 17.8 (2.56) & 18.4 (2.66) \\ 
+                       & Majority vote & \textcolor{red}{15.6 (1.95)} & 15.9 (1.87) & 16.2 (2.28) & 15.8 (1.96) & 16.5 (2.14) & 17.3 (2.42) \\ 
+                       & OOB weight    & 16.0 (2.02) & 16.2 (1.94) & 16.6 (2.28) & 16.1 (1.98) & 16.9 (2.09) & 17.7 (2.43) \\ 
+    \hline
+    \multirow{3}{*}{\MakeUppercase{\romannumeral 4}} & Single        & 12.8 (2.41) & 12.8 (2.40) & 13.3 (2.65) & 12.8 (2.40) & 13.8 (2.56) & 14.8 (2.74) \\
+                       & Majority vote & 11.2 (1.84) & \textcolor{red}{11.1 (1.89)} & 11.5 (1.98) & 11.2 (1.85) & 11.9 (2.03) & 13.3 (2.36) \\ 
+                       & OOB weight    & 11.6 (1.86) & 11.5 (1.90) & 12.0 (1.96) & 11.6 (1.86) & 12.3 (2.06) & 13.6 (2.35) \\
+    \hline
+    \multirow{3}{*}{New} & Single        & 14.5 (2.17) & 14.3 (2.18) & 15.3 (2.69) & 14.3 (2.17) & 15.3 (2.36) & 16.0 (2.22) \\ 
+                         & Majority vote & \textcolor{red}{13.1 (1.73)} & 13.1 (1.78) & 13.6 (2.08) & 13.1 (1.82) & 13.8 (1.90) & 14.9 (2.09) \\ 
+                         & OOB weight    & 13.5 (1.81) & 13.5 (1.78) & 14.0 (2.03) & 13.5 (1.84) & 14.2 (1.92) & 15.2 (2.12) \\ 
+    \hline
+  \end{tabular}
+\end{table}
+
+
+
+# Simulation studies 2
+
+## Simulation studies 2
+
+- Refer to [*Functional Robust Support Vector Machines for Sparse and Irregular Longitudinal Data* ( Wu & Liu)](https://www.tandfonline.com/doi/pdf/10.1080/10618600.2012.680823?needAccess=true)
+- 3 simulation models
+$$
+\begin{alignedat}{2}
+  &\text{Model A: } && \text{Different mean and variance}, \\
+  &\text{Model B: } && \text{Different mean}, \\
+  &\text{Model C: } && \text{Different variance}.
+\end{alignedat}
+$$
+- 200 curves are generated with 100 training and 100 test set.
+- Bagged classifers are obtained from 100 bootstrap resamples.
+- 100 Monte Carlo repetitions for each model
+
+
+## Simulation studies 2
+
+```{r fig.cap="The simulated data obtained from 3 models", fig.dim=c(7,3), warning=F}
+setwd("C:\\Users\\user\\Desktop\\KHS\\FDA-Lab\\Thesis")
+source("bagFPCA.R")
+# plot the generated curves
+data <- sim.curve(200, sparsity=5:10, model="A")   # different mean and variance
+r <- range(data$val)
+p1 <- plot.curve(data, "Model A") + ylim(r[1], r[2])
+
+data <- sim.curve(200, sparsity=5:10, model="B")   # different mean
+p2 <- plot.curve(data, "Model B") + ylim(r[1], r[2])
+
+data <- sim.curve(200, sparsity=5:10, model="C")   # different variance
+p3 <- plot.curve(data, "Model C") + ylim(r[1], r[2])
+
+grid.arrange(p1, p2, p3, nrow=1)
+```
+
+
+## Results of simulation studies 2
+
+\begin{table}[ht]
+  \caption{The average classification error with standard error in percentage from 100 Monte Carlo repetitions for 3 models}
+  \centering
+  \tiny
+  \begin{tabular}{cccccccc}
+    \hline
+          &        & Logistic   & SVM      & SVM        &     &     & Naive \\
+    Model & Method & Regression & (Linear) & (Gaussian) & LDA & QDA & Bayes \\ 
+    \hline
+    \multirow{3}{*}{A} & Single        & 17.6 (4.84) & 17.5 (5.12) & 15.3 (5.30) & 17.1 (4.74) & 15.1 (4.82) & 16.5 (4.55) \\ 
+                       & Majority vote & 15.5 (4.23) & 15.7 (4.41) & \textcolor{red}{13.2 (4.35)} & 15.5 (4.08) & 13.6 (4.17) & 15.2 (4.09) \\ 
+                       & OOB weight    & 16.1 (4.25) & 16.3 (4.49) & 13.9 (4.34) & 16.3 (4.17) & 14.2 (4.12) & 15.7 (3.97) \\
+    \hline
+    \multirow{3}{*}{B} & Single        & 11.9 (3.43) & 11.4 (3.49) & 12.0 (4.25) & 11.3 (3.55) & 12.9 (3.62) & 14.0 (4.39) \\ 
+                       & Majority vote & 10.7 (3.29) & 10.4 (3.13) & 11.0 (3.70) & \textcolor{red}{10.4 (3.24)} & 11.6 (3.36) & 12.4 (3.38) \\ 
+                       & OOB weight    & 11.4 (3.27) & 11.2 (3.00) & 11.7 (3.60) & 11.1 (3.30) & 12.3 (3.36) & 13.1 (3.59) \\
+    \hline
+    \multirow{3}{*}{C} & Single        & 50.5 (5.65) & 49.5 (5.47) & 32.8 (5.03) & 50.6 (5.63) & 31.2 (4.51) & 30.5 (4.71) \\ 
+                       & Majority vote & 49.4 (5.58) & 48.3 (6.15) & 31.3 (5.09) & 49.5 (5.68) & 30.8 (4.06) & \textcolor{red}{29.8 (4.29)} \\ 
+                       & OOB weight    & 48.9 (5.53) & 47.8 (6.03) & 31.5 (5.13) & 48.8 (5.47) & 31.0 (4.03) & 30.1 (4.25) \\ 
+    \hline
+  \end{tabular}
+\end{table}
