@@ -36,7 +36,7 @@ data %>%
   geom_point(size = 1.5) +
   geom_line(size = 1) +
   theme_bw() +
-  ylab("Spinal bone density") +
+  ylab("Spinal bone mineral density") +
   xlab("Age (years)") +
   theme(legend.position = c(0.15, 0.85),
         legend.title = element_blank(),
@@ -48,6 +48,8 @@ data %>%
                                     fill = NA)
         )
   # theme(legend.title = element_blank())
+ggsave(file="img/spnbmd.eps") 
+
 
 # gender classification
 data <- data %>% 

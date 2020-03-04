@@ -1,11 +1,33 @@
 ##################################
 ### bagging classifier with FPCA
 ##################################
+setwd("C:\\Users\\user\\Desktop\\KHS\\bagfpca\\Thesis")
 
 ### majority voting functon
 majority_vote <- function(v) {
   uniqv <- unique(v)
   uniqv[which.max(tabulate(match(v, uniqv)))]
+}
+
+### sensistivity and specificity
+get_sens_spec <- function(pred, y.test) {
+  tb <- table(pred, y.test)
+  
+  # print(tb)
+  if (length(unique(pred)) == 1) {
+    if (unique(pred) == 0) {
+      sens <- tb[1, 1] / sum(tb[, 1]) 
+      spec <- 0
+    } else {
+      sens <- 0
+      spec <- tb[1, 2] / sum(tb[, 2])
+    }
+  } else {
+    sens <- tb[1, 1] / sum(tb[, 1]) 
+    spec <- tb[2, 2] / sum(tb[, 2])
+  }
+  
+  return( c(sens, spec) )
 }
 
 
@@ -125,19 +147,38 @@ get_single_err <- function(X.train, X.test, y.train, y.test) {
   colnames(test.fpc) <- c("y", paste("FPC", 1:k, sep=""))
   
   # predict
-  pred <- list()
+  # pred <- list()
+  # pred.logit <- predict(fit.logit, test.fpc, type="response")
+  # pred[[1]] <- factor(ifelse(pred.logit > 0.5, 1, 0), levels=c(0, 1))
+  # pred[[2]] <- predict(fit.svm.linear, test.fpc)
+  # pred[[3]] <- predict(fit.svm.radial, test.fpc)
+  # pred[[4]] <- predict(fit.lda, test.fpc)$class
+  # pred[[5]] <- predict(fit.qda, test.fpc)$class
+  # pred[[6]] <- predict(fit.nb, test.fpc, type="class")
+  
   pred.logit <- predict(fit.logit, test.fpc, type="response")
-  pred[[1]] <- factor(ifelse(pred.logit > 0.5, 1, 0), levels=c(0, 1))
-  pred[[2]] <- predict(fit.svm.linear, test.fpc)
-  pred[[3]] <- predict(fit.svm.radial, test.fpc)
-  pred[[4]] <- predict(fit.lda, test.fpc)$class
-  pred[[5]] <- predict(fit.qda, test.fpc)$class
-  pred[[6]] <- predict(fit.nb, test.fpc, type="class")
+  pred.logit <- factor(ifelse(pred.logit > 0.5, 1, 0), levels=c(0, 1))
+  pred.svm.linear <- predict(fit.svm.linear, test.fpc)
+  pred.svm.radial <- predict(fit.svm.radial, test.fpc)
+  pred.lda <- predict(fit.lda, test.fpc)$class
+  pred.qda <- predict(fit.qda, test.fpc)$class
+  pred.nb <- predict(fit.nb, test.fpc, type="class")
+  pred <- data.frame(pred.logit,
+                     pred.svm.linear,
+                     pred.svm.radial,
+                     pred.lda,
+                     pred.qda,
+                     pred.nb)
   
   # save the error rate
   err.single <- sapply(pred, function(x){ mean(x != y.test) })
   
+  # sensitivity and specificity
+  sens_spec <- apply(pred, 2, get_sens_spec, y.test)
+  
   return(list(err.single = err.single,
+              sensitivitiy = sens_spec[1, ],
+              specificity = sens_spec[2, ],
               hyper.para = list(tune.linear = tune.linear,
                                 tune.radial = tune.radial)))
 }
@@ -149,7 +190,7 @@ get_bag_err <- function(X.train, X.test, y.train, y.test, B = 100, packages = c(
   tune.linear <- hyper.para$tune.linear
   tune.radial <- hyper.para$tune.radial
   
-  start.time <- Sys.time()
+  # start.time <- Sys.time()
   N <- length(X.train$Ly)
   boot.mat <- matrix(sample(1:N, N*B, replace=T), N, B)
   y.pred <- foreach(b=1:B, .packages=packages) %dopar% {
@@ -224,12 +265,14 @@ get_bag_err <- function(X.train, X.test, y.train, y.test, B = 100, packages = c(
     fit.svm.linear <- svm(y ~ ., 
                           data = train.fpc,
                           kernel = "linear",
-                          cost = tune.linear$best.model$cost)
+                          cost = tune.linear$best.model$cost,
+                          probability = T)
     fit.svm.radial <- svm(y ~ ., 
                           data = train.fpc,
                           kernel = "radial",
                           cost = tune.radial$best.model$cost,
-                          gamma = tune.radial$best.model$gamma)
+                          gamma = tune.radial$best.model$gamma,
+                          probability = T)
     fit.lda <- lda(y~., train.fpc)
     fit.qda <- qda(y~., train.fpc)
     fit.nb <- naiveBayes(y~., train.fpc)
@@ -249,6 +292,16 @@ get_bag_err <- function(X.train, X.test, y.train, y.test, B = 100, packages = c(
     pred.lda <- predict(fit.lda, test.fpc)$class
     pred.qda <- predict(fit.qda, test.fpc)$class
     pred.nb <- predict(fit.nb, test.fpc, type="class")
+    
+    # posterior probabilities
+    prob.logit <- predict(fit.logit, test.fpc, type="response")
+    prob.svm.linear <- attr(predict(fit.svm.linear, test.fpc, probability = T),
+                            "probabilities")[, 1]
+    prob.svm.radial <- attr(predict(fit.svm.radial, test.fpc, probability = T), 
+                            "probabilities")[, 1]
+    prob.lda <- predict(fit.lda, test.fpc)$posterior[, 2]
+    prob.qda <- predict(fit.qda, test.fpc)$posterior[, 2]
+    prob.nb <- predict(fit.nb, test.fpc, type="raw")[, 2]
     
     # OOB FPC scores
     oob.ind <- which(X.train$Lid %in% id.oob)
@@ -289,20 +342,35 @@ get_bag_err <- function(X.train, X.test, y.train, y.test, B = 100, packages = c(
                                    qda = pred.qda,
                                    nb = pred.nb,
                                    # predicted value * OOB accuracy
-                                   logit.oob = as.numeric(pred.logit) * (1 - oob.error[1]),
-                                   svm.linear.oob = as.numeric(pred.svm.linear) * (1 - oob.error[2]),
-                                   svm.radial.oob = as.numeric(pred.svm.radial) * (1 - oob.error[3]),
-                                   lda.oob = as.numeric(pred.lda) * (1 - oob.error[4]),
-                                   qda.oob = as.numeric(pred.qda) * (1 - oob.error[5]),
-                                   nb.oob = as.numeric(pred.nb) * (1 - oob.error[6]))) )
+                                   logit.oob = as.numeric(pred.logit) * (1/oob.error[1]),
+                                   svm.linear.oob = as.numeric(pred.svm.linear) * (1/oob.error[2]),
+                                   svm.radial.oob = as.numeric(pred.svm.radial) * (1/oob.error[3]),
+                                   lda.oob = as.numeric(pred.lda) * (1/oob.error[4]),
+                                   qda.oob = as.numeric(pred.qda) * (1/oob.error[5]),
+                                   nb.oob = as.numeric(pred.nb) * (1/oob.error[6]),
+
+                                   # logit.oob = prob.logit * (1 - oob.error[1]),
+                                   # svm.linear.oob = prob.svm.linear * (1 - oob.error[2]),
+                                   # svm.radial.oob = prob.svm.radial * (1 - oob.error[3]),
+                                   # lda.oob = prob.lda * (1 - oob.error[4]),
+                                   # qda.oob = prob.qda * (1 - oob.error[5]),
+                                   # nb.oob = prob.nb * (1 - oob.error[6]),
+                                   
+                                   # oob error
+                                   oob.err.logit = oob.error[1],
+                                   oob.err.svm.linear = oob.error[2],
+                                   oob.err.svm.radial = oob.error[3],
+                                   oob.err.lda = oob.error[4],
+                                   oob.err.qda = oob.error[5],
+                                   oob.err.nb = oob.error[6])) )
   }
-  end.time <- Sys.time()
-  print(end.time - start.time)
+  # end.time <- Sys.time()
+  # print(end.time - start.time)
   
   ## save the accuracy
   res <- as.data.frame(rbindlist(lapply(y.pred, function(x){ x$boot })))
   # majority voting
-  pred <- res %>% 
+  pred.major <- res %>% 
     group_by(id, y) %>% 
     summarise(logit = majority_vote(logit),
               svm.linear = majority_vote(svm.linear),
@@ -310,29 +378,49 @@ get_bag_err <- function(X.train, X.test, y.train, y.test, B = 100, packages = c(
               lda = majority_vote(lda),
               qda = majority_vote(qda),
               nb = majority_vote(nb))
-  err.majority <- 1 - apply(pred[, 3:8], 2, function(x){ mean(x == pred$y) })
+  err.majority <- 1 - apply(pred.major[, 3:8], 2, function(x){ mean(x == pred.major$y) })
+  sens.spec.major <- apply(pred.major[, 3:8], 2, get_sens_spec, y.test)   # sensitivity and specificity
+  
   
   # oob error
-  oob.acc <- colSums( 1 - t(sapply(y.pred, function(x){ x$oob.error })) )
-  pred <- res %>% 
+  # oob.acc <- colSums( 1 - t(sapply(y.pred, function(x){ x$oob.error })) )
+  pred.oob <- res %>% 
     group_by(id, y) %>% 
-    summarise(logit = factor(ifelse(sum(logit.oob)/oob.acc[1] > 1.5, 1, 0), 
+    summarise(logit = factor(ifelse(sum(logit.oob) / sum(1/oob.err.logit) > 1.5, 1, 0), 
                              levels=c(0, 1)),
-              svm.linear = factor(ifelse(sum(svm.linear.oob)/oob.acc[2] > 1.5, 1, 0), 
+              svm.linear = factor(ifelse(sum(svm.linear.oob) / sum(1/oob.err.svm.linear) > 1.5, 1, 0), 
                                   levels=c(0, 1)),
-              svm.radial = factor(ifelse(sum(svm.radial.oob)/oob.acc[3] > 1.5, 1, 0), 
+              svm.radial = factor(ifelse(sum(svm.radial.oob) / sum(1/oob.err.svm.radial) > 1.5, 1, 0), 
                                   levels=c(0, 1)),
-              lda = factor(ifelse(sum(lda.oob)/oob.acc[4] > 1.5, 1, 0), 
+              lda = factor(ifelse(sum(lda.oob) / sum(1/oob.err.lda) > 1.5, 1, 0), 
                            levels=c(0, 1)),
-              qda = factor(ifelse(sum(qda.oob)/oob.acc[5] > 1.5, 1, 0), 
+              qda = factor(ifelse(sum(qda.oob) / sum(1/oob.err.qda) > 1.5, 1, 0), 
                            levels=c(0, 1)),
-              nb = factor(ifelse(sum(nb.oob)/oob.acc[6] > 1.5, 1, 0), 
+              nb = factor(ifelse(sum(nb.oob) / sum(1/oob.err.nb) > 1.5, 1, 0), 
                           levels=c(0, 1)))
-  err.oob <- 1 - apply(pred[, 3:8], 2, function(x){ mean(x == pred$y) })
+  # pred.oob <- res %>% 
+  #   group_by(id, y) %>% 
+  #   summarise(logit = factor(ifelse(sum(logit.oob)/oob.acc[1] > 1.5, 1, 0), 
+  #                            levels=c(0, 1)),
+  #             svm.linear = factor(ifelse(sum(svm.linear.oob)/oob.acc[2] > 1.5, 1, 0), 
+  #                                 levels=c(0, 1)),
+  #             svm.radial = factor(ifelse(sum(svm.radial.oob)/oob.acc[3] > 1.5, 1, 0), 
+  #                                 levels=c(0, 1)),
+  #             lda = factor(ifelse(sum(lda.oob)/oob.acc[4] > 1.5, 1, 0), 
+  #                          levels=c(0, 1)),
+  #             qda = factor(ifelse(sum(qda.oob)/oob.acc[5] > 1.5, 1, 0), 
+  #                          levels=c(0, 1)),
+  #             nb = factor(ifelse(sum(nb.oob)/oob.acc[6] > 1.5, 1, 0), 
+  #                         levels=c(0, 1)))
+  err.oob <- 1 - apply(pred.oob[, 3:8], 2, function(x){ mean(x == pred.oob$y) })
+  sens.spec.oob <- apply(pred.oob[, 3:8], 2, get_sens_spec, y.test)   # sensitivity and specificity
   
   return(list(err.majority = err.majority,
               err.oob = err.oob,
-              y.pred = y.pred))
+              sens.major = sens.spec.major[1, ],
+              spec.major = sens.spec.major[2, ],
+              sens.oob = sens.spec.oob[1, ],
+              spec.oob = sens.spec.oob[2, ]))
 }
 
 
@@ -340,9 +428,11 @@ get_bag_err <- function(X.train, X.test, y.train, y.test, B = 100, packages = c(
 # model A : different mean and variance 
 # model B : different mean
 # model C : different variance
-sim.curve <- function(n, sparsity=5:10, model="A") {
+sim.curve <- function(n, sparsity=5:10, model="A", prop=0.5) {
+  n_A <- ceiling(n*prop)
+  n_B <- n - n_A
   ## generate curves
-  y <- factor(c(rep(0, n/2), rep(1, n/2)), levels=c(0, 1))
+  y <- factor(c(rep(0, n_A), rep(1, n_B)), levels=c(0, 1))
   data <- list()
   # random sparsify => generate curve
   for (i in 1:n) {
@@ -352,7 +442,7 @@ sim.curve <- function(n, sparsity=5:10, model="A") {
     
     # mean function and variance
     if (model == "A") {
-      if (i < n/2) {
+      if (i <= n_A) {
         mu <- t + sin(t)
         lambda <- c(4, 2, 1)
       } else {
@@ -360,7 +450,7 @@ sim.curve <- function(n, sparsity=5:10, model="A") {
         lambda <- c(16, 8, 4)
       }
     } else if (model == "B") {
-      if (i < n/2) {
+      if (i <= n_A) {
         mu <- t + sin(t)
         lambda <- c(4, 2, 1)
       } else {
@@ -368,7 +458,7 @@ sim.curve <- function(n, sparsity=5:10, model="A") {
         lambda <- c(4, 2, 1)
       }
     } else if (model == "C") {
-      if (i < n/2) {
+      if (i <= n_A) {
         mu <- t + sin(t)
         lambda <- c(4, 2, 1)
       } else {

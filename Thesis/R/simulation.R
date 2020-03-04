@@ -3,7 +3,7 @@
 ###   Functional Robust Support Vector Machines for Sparse and Irregular Longitudinal Data
 ###   Link: https://www.tandfonline.com/doi/pdf/10.1080/10618600.2012.680823?needAccess=true
 #########################################
-setwd("C:\\Users\\user\\Desktop\\KHS\\FDA-Lab\\Thesis")
+setwd("C:\\Users\\user\\Desktop\\KHS\\bagfpca\\Thesis")
 
 library(tidyverse)    # dplyr, ggplot2, etc
 library(doParallel)   # parallel computing
@@ -14,7 +14,7 @@ library(data.table)   # list rbind
 library(gridExtra)    # subplot in ggplot2
 library(reshape2)     # melt function
 library(xtable)
-source("bagFPCA.R")
+source("R/bagFPCA.R")
 
 # parallel computing setting
 ncores <- detectCores() - 2
@@ -23,24 +23,27 @@ registerDoParallel(ncores)
 packages <- c("fdapace","e1071","MASS","tidyverse")   # foreach에서 사용할 package 정의
 
 
-### different sample size
+### different class proportion
 err <- list()
-# for (n in c(100, 200, 400, 600, 800, 1000)) {
-for (n in c(400, 600, 800, 1000)) {
-  print(paste("n =", n))
+# load("RData/sim_C.RData")
+# err[["P(A) = 0.5"]] <- result
+for (p in c(0.5, 0.4, 0.3, 0.2)) {
+  print(paste("P(A) =", p))
   ### construct classification models
   result <- list()   # error rate result
   simm <- 0      # loop index
   num.sim <- 0   # number of simulations
   while (num.sim < 100) {
+    start.time <- Sys.time()
+    
     simm <- simm + 1
     print(simm)
     set.seed(simm)
     
     ### generate simulated data
-    data <- sim.curve(n, sparsity=5:10, model="A")   # different mean and variance
-    # data <- sim.curve(200, sparsity=5:10, model="B")   # different mean
-    # data <- sim.curve(200, sparsity=5:10, model="C")   # different variance
+    data <- sim.curve(200, sparsity=5:10, model="A", prop=p)   # different mean and variance
+    # data <- sim.curve(200, sparsity=5:10, model="B", prop=p)   # different mean
+    # data <- sim.curve(200, sparsity=5:10, model="C", prop=p)   # different variance
     
     ### train, test split
     train_test <- train_test_split(data, train.prop = 1/2)
@@ -75,10 +78,20 @@ for (n in c(400, 600, 800, 1000)) {
       num.sim <- num.sim + 1
     }
     
+    end.time <- Sys.time()
+    print(end.time - start.time)
+    
     # save result
     res <- as.data.frame(rbind(err.single = err.single$err.single,
                                err.majority = err.bag$err.majority,
-                               err.oob = err.bag$err.oob))
+                               err.oob = err.bag$err.oob,
+                               # sensitivity and specificity
+                               sens.single = err.single$sensitivitiy,
+                               spec.single = err.single$specificity,
+                               sens.major = err.bag$sens.major,
+                               spec.major = err.bag$spec.major,
+                               sens.oob = err.bag$sens.oob,
+                               spec.oob = err.bag$spec.oob))
     colnames(res) <- c("Logit","SVM(Linear)","SVM(Gaussian)","LDA","QDA","NaiveBayes")
     
     result[[simm]] <- res
@@ -94,12 +107,15 @@ for (n in c(400, 600, 800, 1000)) {
     # }
   }
   
-  err[[paste("n=", n, sep="")]] <- result
+  err[[paste("P(A) =", p)]] <- result
 
   # save(result, file="RData/sim_A.RData")
   # save(result, file="RData/sim_B.RData")
   # save(result, file="RData/sim_C.RData")
-  save(err, file="RData/sim_A_n.RData")
+  
+  # save(err, file="RData/sim_A_p.RData")
+  # save(err, file="RData/sim_B_p.RData")
+  # save(err, file="RData/sim_C_p.RData")
 }
 
 
@@ -107,28 +123,33 @@ for (n in c(400, 600, 800, 1000)) {
 
 
 ## 결과 정리
-result <- result[!sapply(result, is.null)]
+for (i in 1:4) {
+  result <- err[[i]]
+  result <- result[!sapply(result, is.null)]
+  
+  res <- sapply(1:9, function(i){
+    paste(lapply(result, function(x){ x[i, ]*100 }) %>% 
+            rbindlist %>% 
+            colMeans %>% 
+            round(2),
+          " (",
+          apply(lapply(result[!sapply(result, is.null)], 
+                       function(x){ x[i, ]*100 }) %>% 
+                  rbindlist, 2, sd) %>% 
+            round(2),
+          ")",
+          sep="")
+  }) %>% 
+    t() %>% 
+    as.data.frame
+  colnames(res) <- c("Logit","SVM(Linear)","SVM(Gaussian)","LDA","QDA","NaiveBayes")
+  rownames(res) <- c("Single","Majority vote","OOB weight",
+                     "Sens(Single)","Spec(Single)","Sens(Majority)","Spec(Majority)","Sens(OOB)","Spec(OOB)")
+  
+  print(names(err)[i])
+  print(xtable(res))
+}
 
-res <- sapply(1:3, function(i){
-  paste(lapply(result, function(x){ x[i, ]*100 }) %>% 
-          rbindlist %>% 
-          colMeans %>% 
-          round(1),
-        " (",
-        apply(lapply(result[!sapply(result, is.null)], 
-                     function(x){ x[i, ]*100 }) %>% 
-                rbindlist, 2, sd) %>% 
-          round(2),
-        ")",
-        sep="")
-}) %>% 
-  t() %>% 
-  as.data.frame
-colnames(res) <- c("Logit","SVM(Linear)","SVM(Gaussian)","LDA","QDA","NaiveBayes")
-rownames(res) <- c("Single","Majority vote","OOB weight")
-res
-
-xtable(res)
 
 
 

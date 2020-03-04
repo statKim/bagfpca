@@ -1,2 +1,5 @@
 .Rhistory
 build/
+CSAM/
+*.tex
+*.pdf
