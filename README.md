@@ -1,4 +1,4 @@
-# Bootstrap Aggregating Classifier with Functional Principal Component Analysis
+# Bootstrap aggregated classification for sparse functional data
 
 
 

@@ -17,7 +17,7 @@ library(xtable)
 source("R/bagFPCA.R")
 
 # parallel computing setting
-ncores <- detectCores() - 2
+ncores <- detectCores() - 3
 registerDoParallel(ncores)
 
 packages <- c("fdapace","e1071","MASS","tidyverse")   # foreach에서 사용할 package 정의
@@ -41,9 +41,9 @@ for (p in c(0.5, 0.4, 0.3, 0.2)) {
     set.seed(simm)
     
     ### generate simulated data
-    data <- sim.curve(200, sparsity=5:10, model="A", prop=p)   # different mean and variance
+    # data <- sim.curve(200, sparsity=5:10, model="A", prop=p)   # different mean and variance
     # data <- sim.curve(200, sparsity=5:10, model="B", prop=p)   # different mean
-    # data <- sim.curve(200, sparsity=5:10, model="C", prop=p)   # different variance
+    data <- sim.curve(200, sparsity=5:10, model="C", prop=p)   # different variance
     
     ### train, test split
     train_test <- train_test_split(data, train.prop = 1/2)
@@ -116,6 +116,30 @@ for (p in c(0.5, 0.4, 0.3, 0.2)) {
   # save(err, file="RData/sim_A_p.RData")
   # save(err, file="RData/sim_B_p.RData")
   # save(err, file="RData/sim_C_p.RData")
+  
+  # save(err, file="RData/sim_A_modify.RData")
+  # save(err, file="RData/sim_B_modify.RData")
+  save(err, file="RData/sim_C_modify.RData")
+  
+  # error, se check
+  res <- sapply(1:3, function(i){
+    paste(lapply(result[!sapply(result, is.null)], function(x){ x[i, ]*100 }) %>% 
+            rbindlist %>% 
+            colMeans %>% 
+            round(2),
+          " (",
+          apply(lapply(result[!sapply(result, is.null)], 
+                       function(x){ x[i, ]*100 }) %>% 
+                  rbindlist, 2, sd) %>% 
+            round(2),
+          ")",
+          sep="")
+  }) %>% 
+    t() %>% 
+    as.data.frame
+  colnames(res) <- c("Logit","SVM(Linear)","SVM(Gaussian)","LDA","QDA","NaiveBayes")
+  rownames(res) <- c("Single","Majority vote","OOB weight")
+  print(res)
 }
 
 

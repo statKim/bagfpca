@@ -2,7 +2,7 @@
 ### Real data analysis
 ###   Berkely growth data
 #########################################
-setwd("C:\\Users\\user\\Desktop\\KHS\\FDA-Lab\\Thesis")
+setwd("C:\\Users\\user\\Desktop\\KHS\\bagfpca\\Thesis")
 
 library(tidyverse)
 library(doParallel)   # parallel computing
@@ -13,10 +13,10 @@ library(data.table)
 library(reshape2)
 library(fda)
 library(xtable)
-source("bagFPCA.R")
+source("R/bagFPCA.R")
 
 # parallel computing setting
-ncores <- detectCores() - 2
+ncores <- detectCores() - 3
 registerDoParallel(ncores)
 
 packages <- c("fdapace","e1071","MASS")   # foreach에서 사용할 package 정의
@@ -71,11 +71,13 @@ data <- data.frame(id, time, val, y)
 
 ### construct classification models
 result <- list()
-# set.seed(1000)
+set.seed(1000)
 seed <- sample(1:10000, 100)
 for (simm in 1:100) {
   print( paste(simm, ":", seed[simm]) )
   set.seed(seed[simm])
+  
+  start.time <- Sys.time()
   
   ### train, test split
   train_test <- train_test_split(data, train.prop = 2/3)
@@ -91,6 +93,9 @@ for (simm in 1:100) {
   # Bootstrap aggregating
   err.bag <- get_bag_err(X.train, X.test, y.train, y.test, B = 100, packages = packages, hyper.para = err.single$hyper.para)
   
+  end.time <- Sys.time()
+  print(end.time - start.time)
+  
   # save result
   res <- as.data.frame(rbind(err.single = err.single$err.single,
                              err.majority = err.bag$err.majority,
@@ -100,7 +105,7 @@ for (simm in 1:100) {
   result[[simm]] <- res
 }
 
-save(result, file="RData/real_data_2.RData")
+save(result, file="RData/real_data_2_modify.RData")
 
 ## 결과 정리
 result <- result[!sapply(result, is.null)]
@@ -109,7 +114,7 @@ res <- sapply(1:3, function(i){
   paste(lapply(result, function(x){ x[i, ]*100 }) %>% 
           rbindlist %>% 
           colMeans %>% 
-          round(1),
+          round(2),
         " (",
         apply(lapply(result[!sapply(result, is.null)], 
                      function(x){ x[i, ]*100 }) %>% 

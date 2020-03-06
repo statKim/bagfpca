@@ -2,7 +2,7 @@
 ### Real data analysis
 ###   Spinal bone mineral density data
 #########################################
-setwd("C:\\Users\\user\\Desktop\\KHS\\FDA-Lab\\Thesis")
+setwd("C:\\Users\\user\\Desktop\\KHS\\bagfpca\\Thesis")
 
 library(tidyverse)
 library(doParallel)   # parallel computing
@@ -11,10 +11,10 @@ library(e1071)
 library(MASS)
 library(data.table)
 library(xtable)
-source("bagFPCA.R")
+source("R/bagFPCA.R")
 
 # parallel computing setting
-ncores <- detectCores() - 2
+ncores <- detectCores() - 3
 registerDoParallel(ncores)
 
 packages <- c("fdapace","e1071","MASS")   # foreach에서 사용할 package 정의
@@ -57,7 +57,7 @@ data <- data %>%
   dplyr::select(y, idnum, age, spnbmd)
 length(unique(data$idnum))   # 280
 
-colnames(data) <- c("id","time","val","y")
+colnames(data) <- c("y","id","time","val")
 
 
 ### construct classification models
@@ -67,6 +67,8 @@ seed <- sample(1:10000, 100)
 for (simm in 1:100) {
   print( paste(simm, ":", seed[simm]) )
   set.seed(seed[simm])
+  
+  start.time <- Sys.time()
   
   ### train, test split
   train_test <- train_test_split(data, train.prop = 2/3)
@@ -82,16 +84,26 @@ for (simm in 1:100) {
   # Bootstrap aggregating
   err.bag <- get_bag_err(X.train, X.test, y.train, y.test, B = 100, packages = packages, hyper.para = err.single$hyper.para)
   
+  end.time <- Sys.time()
+  print(end.time - start.time)
+  
   # save result
   res <- as.data.frame(rbind(err.single = err.single$err.single,
                              err.majority = err.bag$err.majority,
-                             err.oob = err.bag$err.oob))
+                             err.oob = err.bag$err.oob,
+                             # sensitivity and specificity
+                             sens.single = err.single$sensitivitiy,
+                             spec.single = err.single$specificity,
+                             sens.major = err.bag$sens.major,
+                             spec.major = err.bag$spec.major,
+                             sens.oob = err.bag$sens.oob,
+                             spec.oob = err.bag$spec.oob))
   colnames(res) <- c("Logit","SVM(Linear)","SVM(Gaussian)","LDA","QDA","NaiveBayes")
   
   result[[simm]] <- res
 }
 
-save(result, file="RData/real_data_1.RData")
+save(result, file="RData/real_data_1_modify.RData")
 
 ## 결과 정리
 result <- result[!sapply(result, is.null)]
@@ -100,7 +112,7 @@ res <- sapply(1:3, function(i){
   paste(lapply(result, function(x){ x[i, ]*100 }) %>% 
           rbindlist %>% 
           colMeans %>% 
-          round(1),
+          round(2),
         " (",
         apply(lapply(result[!sapply(result, is.null)], 
                      function(x){ x[i, ]*100 }) %>% 

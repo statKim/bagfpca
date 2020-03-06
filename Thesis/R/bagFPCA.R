@@ -1,7 +1,6 @@
 ##################################
 ### bagging classifier with FPCA
 ##################################
-setwd("C:\\Users\\user\\Desktop\\KHS\\bagfpca\\Thesis")
 
 ### majority voting functon
 majority_vote <- function(v) {
@@ -341,13 +340,13 @@ get_bag_err <- function(X.train, X.test, y.train, y.test, B = 100, packages = c(
                                    lda = pred.lda,
                                    qda = pred.qda,
                                    nb = pred.nb,
-                                   # predicted value * OOB accuracy
-                                   logit.oob = as.numeric(pred.logit) * (1/oob.error[1]),
-                                   svm.linear.oob = as.numeric(pred.svm.linear) * (1/oob.error[2]),
-                                   svm.radial.oob = as.numeric(pred.svm.radial) * (1/oob.error[3]),
-                                   lda.oob = as.numeric(pred.lda) * (1/oob.error[4]),
-                                   qda.oob = as.numeric(pred.qda) * (1/oob.error[5]),
-                                   nb.oob = as.numeric(pred.nb) * (1/oob.error[6]),
+                                   # # predicted value * OOB accuracy
+                                   # logit.oob = as.numeric(pred.logit) * (1/oob.error[1]),
+                                   # svm.linear.oob = as.numeric(pred.svm.linear) * (1/oob.error[2]),
+                                   # svm.radial.oob = as.numeric(pred.svm.radial) * (1/oob.error[3]),
+                                   # lda.oob = as.numeric(pred.lda) * (1/oob.error[4]),
+                                   # qda.oob = as.numeric(pred.qda) * (1/oob.error[5]),
+                                   # nb.oob = as.numeric(pred.nb) * (1/oob.error[6]),
 
                                    # logit.oob = prob.logit * (1 - oob.error[1]),
                                    # svm.linear.oob = prob.svm.linear * (1 - oob.error[2]),
@@ -357,12 +356,12 @@ get_bag_err <- function(X.train, X.test, y.train, y.test, B = 100, packages = c(
                                    # nb.oob = prob.nb * (1 - oob.error[6]),
                                    
                                    # oob error
-                                   oob.err.logit = oob.error[1],
-                                   oob.err.svm.linear = oob.error[2],
-                                   oob.err.svm.radial = oob.error[3],
-                                   oob.err.lda = oob.error[4],
-                                   oob.err.qda = oob.error[5],
-                                   oob.err.nb = oob.error[6])) )
+                                   oob.logit = oob.error[1],
+                                   oob.svm.linear = oob.error[2],
+                                   oob.svm.radial = oob.error[3],
+                                   oob.lda = oob.error[4],
+                                   oob.qda = oob.error[5],
+                                   oob.nb = oob.error[6])) )
   }
   # end.time <- Sys.time()
   # print(end.time - start.time)
@@ -381,22 +380,42 @@ get_bag_err <- function(X.train, X.test, y.train, y.test, B = 100, packages = c(
   err.majority <- 1 - apply(pred.major[, 3:8], 2, function(x){ mean(x == pred.major$y) })
   sens.spec.major <- apply(pred.major[, 3:8], 2, get_sens_spec, y.test)   # sensitivity and specificity
   
+  # res %>% 
+  #   group_by(id, y) %>% 
+  #   summarise(numer = sum(svm.linear.oob),
+  #             denomin = sum(1/oob.err.svm.linear))
+  #             
+  # min(res$oob.err.svm.linear[res$oob.err.svm.linear > 0])
+  # 
+  # x <- res %>% 
+  #   dplyr::select(id, y, svm.linear, oob.err.svm.linear)
+  # d <- x %>% 
+  #   mutate(oob.weight = 1/ifelse(oob.err.svm.linear == 0, min(oob.err.svm.linear[oob.err.svm.linear > 0]), oob.err.svm.linear)) %>% 
+  #   group_by(id, y) %>% 
+  #   summarise(oob = sum(oob.weight*as.numeric(svm.linear)) / sum(oob.weight))
+  
   
   # oob error
   # oob.acc <- colSums( 1 - t(sapply(y.pred, function(x){ x$oob.error })) )
   pred.oob <- res %>% 
+    mutate(w.logit = 1/ifelse(oob.logit == 0, min(oob.logit[oob.logit > 0]), oob.logit),
+           w.svm.linear = 1/ifelse(oob.svm.linear == 0, min(oob.svm.linear[oob.svm.linear > 0]), oob.svm.linear),
+           w.svm.radial = 1/ifelse(oob.svm.radial == 0, min(oob.svm.radial[oob.svm.radial > 0]), oob.svm.radial),
+           w.lda = 1/ifelse(oob.lda == 0, min(oob.lda[oob.lda > 0]), oob.lda),
+           w.qda = 1/ifelse(oob.qda == 0, min(oob.qda[oob.qda > 0]), oob.qda),
+           w.nb = 1/ifelse(oob.nb == 0, min(oob.nb[oob.nb > 0]), oob.nb)) %>% 
     group_by(id, y) %>% 
-    summarise(logit = factor(ifelse(sum(logit.oob) / sum(1/oob.err.logit) > 1.5, 1, 0), 
+    summarise(logit = factor(ifelse(sum(w.logit*as.numeric(logit)) / sum(w.logit) > 1.5, 1, 0), 
                              levels=c(0, 1)),
-              svm.linear = factor(ifelse(sum(svm.linear.oob) / sum(1/oob.err.svm.linear) > 1.5, 1, 0), 
+              svm.linear = factor(ifelse(sum(w.svm.linear*as.numeric(svm.linear)) / sum(w.svm.linear) > 1.5, 1, 0), 
                                   levels=c(0, 1)),
-              svm.radial = factor(ifelse(sum(svm.radial.oob) / sum(1/oob.err.svm.radial) > 1.5, 1, 0), 
+              svm.radial = factor(ifelse(sum(w.svm.radial*as.numeric(svm.radial)) / sum(w.svm.radial) > 1.5, 1, 0), 
                                   levels=c(0, 1)),
-              lda = factor(ifelse(sum(lda.oob) / sum(1/oob.err.lda) > 1.5, 1, 0), 
+              lda = factor(ifelse(sum(w.lda*as.numeric(lda)) / sum(w.lda) > 1.5, 1, 0), 
                            levels=c(0, 1)),
-              qda = factor(ifelse(sum(qda.oob) / sum(1/oob.err.qda) > 1.5, 1, 0), 
+              qda = factor(ifelse(sum(w.qda*as.numeric(qda)) / sum(w.qda) > 1.5, 1, 0), 
                            levels=c(0, 1)),
-              nb = factor(ifelse(sum(nb.oob) / sum(1/oob.err.nb) > 1.5, 1, 0), 
+              nb = factor(ifelse(sum(w.nb*as.numeric(nb)) / sum(w.nb) > 1.5, 1, 0), 
                           levels=c(0, 1)))
   # pred.oob <- res %>% 
   #   group_by(id, y) %>% 
