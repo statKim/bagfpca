@@ -403,7 +403,13 @@ get_bag_err <- function(X.train, X.test, y.train, y.test, B = 100, packages = c(
            w.svm.radial = 1/ifelse(oob.svm.radial == 0, min(oob.svm.radial[oob.svm.radial > 0]), oob.svm.radial),
            w.lda = 1/ifelse(oob.lda == 0, min(oob.lda[oob.lda > 0]), oob.lda),
            w.qda = 1/ifelse(oob.qda == 0, min(oob.qda[oob.qda > 0]), oob.qda),
-           w.nb = 1/ifelse(oob.nb == 0, min(oob.nb[oob.nb > 0]), oob.nb)) %>% 
+           w.nb = 1/ifelse(oob.nb == 0, min(oob.nb[oob.nb > 0]), oob.nb)) %>%
+    # mutate(w.logit = 1/ifelse(oob.logit == 0, runif(1, 0, min(oob.logit[oob.logit > 0])), oob.logit),
+    #        w.svm.linear = 1/ifelse(oob.svm.linear == 0, runif(1, 0, min(oob.svm.linear[oob.svm.linear > 0])), oob.svm.linear),
+    #        w.svm.radial = 1/ifelse(oob.svm.radial == 0, runif(1, 0, min(oob.svm.radial[oob.svm.radial > 0])), oob.svm.radial),
+    #        w.lda = 1/ifelse(oob.lda == 0, runif(1, 0, min(oob.lda[oob.lda > 0])), oob.lda),
+    #        w.qda = 1/ifelse(oob.qda == 0, runif(1, 0, min(oob.qda[oob.qda > 0])), oob.qda),
+    #        w.nb = 1/ifelse(oob.nb == 0, runif(1, 0, min(oob.nb[oob.nb > 0])), oob.nb)) %>% 
     group_by(id, y) %>% 
     summarise(logit = factor(ifelse(sum(w.logit*as.numeric(logit)) / sum(w.logit) > 1.5, 1, 0), 
                              levels=c(0, 1)),

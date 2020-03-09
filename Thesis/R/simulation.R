@@ -42,8 +42,8 @@ for (p in c(0.5, 0.4, 0.3, 0.2)) {
     
     ### generate simulated data
     # data <- sim.curve(200, sparsity=5:10, model="A", prop=p)   # different mean and variance
-    # data <- sim.curve(200, sparsity=5:10, model="B", prop=p)   # different mean
-    data <- sim.curve(200, sparsity=5:10, model="C", prop=p)   # different variance
+    data <- sim.curve(200, sparsity=5:10, model="B", prop=p)   # different mean
+    # data <- sim.curve(200, sparsity=5:10, model="C", prop=p)   # different variance
     
     ### train, test split
     train_test <- train_test_split(data, train.prop = 1/2)
@@ -119,7 +119,7 @@ for (p in c(0.5, 0.4, 0.3, 0.2)) {
   
   # save(err, file="RData/sim_A_modify.RData")
   # save(err, file="RData/sim_B_modify.RData")
-  save(err, file="RData/sim_C_modify.RData")
+  # save(err, file="RData/sim_C_modify.RData")
   
   # error, se check
   res <- sapply(1:3, function(i){
@@ -171,7 +171,8 @@ for (i in 1:4) {
                      "Sens(Single)","Spec(Single)","Sens(Majority)","Spec(Majority)","Sens(OOB)","Spec(OOB)")
   
   print(names(err)[i])
-  print(xtable(res))
+  # print(xtable(res))
+  print(res)
 }
 
 

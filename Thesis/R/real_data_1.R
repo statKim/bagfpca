@@ -108,7 +108,7 @@ save(result, file="RData/real_data_1_modify.RData")
 ## 결과 정리
 result <- result[!sapply(result, is.null)]
 
-res <- sapply(1:3, function(i){
+res <- sapply(1:9, function(i){
   paste(lapply(result, function(x){ x[i, ]*100 }) %>% 
           rbindlist %>% 
           colMeans %>% 
