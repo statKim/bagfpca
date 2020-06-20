@@ -14,7 +14,7 @@ library(xtable)
 source("R/bagFPCA.R")
 
 # parallel computing setting
-ncores <- detectCores() - 3
+ncores <- detectCores() - 1
 registerDoParallel(ncores)
 
 packages <- c("fdapace","e1071","MASS")   # foreach에서 사용할 package 정의
@@ -48,7 +48,7 @@ data %>%
                                     fill = NA)
         )
   # theme(legend.title = element_blank())
-ggsave(file="img/spnbmd.eps") 
+# ggsave(file="img/spnbmd.eps") 
 
 
 # gender classification

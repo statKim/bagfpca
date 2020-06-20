@@ -445,7 +445,8 @@ get_bag_err <- function(X.train, X.test, y.train, y.test, B = 100, packages = c(
               sens.major = sens.spec.major[1, ],
               spec.major = sens.spec.major[2, ],
               sens.oob = sens.spec.oob[1, ],
-              spec.oob = sens.spec.oob[2, ]))
+              spec.oob = sens.spec.oob[2, ],
+              y.pred = y.pred))
 }
 
 
