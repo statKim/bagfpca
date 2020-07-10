@@ -8,6 +8,7 @@ majority_vote <- function(v) {
   uniqv[which.max(tabulate(match(v, uniqv)))]
 }
 
+
 ### sensistivity and specificity
 get_sens_spec <- function(pred, y.test) {
   tb <- table(pred, y.test)
@@ -94,154 +95,97 @@ train_test_split <- function(data, train.prop=2/3) {
 }
 
 
-
-
-### Single classifier
-get_single_err <- function(X.train, X.test, y.train, y.test) {
-  fpca.fit <- FPCA(X.train$Ly, 
-                   X.train$Lt, 
-                   optns=list(dataType="Sparse",
-                              methodXi="CE",
-                              # methodSelectK="BIC",
-                              FVEthreshold=0.99,
-                              verbose=F))
-  k <- fpca.fit$selectK   # optimal number of PCs
-  fpc.score <- fpca.fit$xiEst
+### Get ID of test and OOB samples
+get_id_test_oob <- function(X.train, X.test, boot.ind) {
+  # bootstrap sample의 time range를 벗어나는 test set sample 제거
+  id.test <- NULL
+  max.boot <- max(unlist(X.train$Lt[boot.ind]))
+  min.boot <- min(unlist(X.train$Lt[boot.ind]))
+  if (min(unlist(X.test$Lt)) < min.boot) {
+    # train set에서의 index(Not id)
+    over.ind <- which(sapply(X.test$Lt, 
+                             function(x){ sum(x < min.boot) }) != 0)
+    id.test <- unlist(X.test$Lid)[-over.ind]
+  }
+  if (max(unlist(X.test$Lt)) > max.boot) {
+    # train set에서의 index(Not id)
+    over.ind <- which(sapply(X.test$Lt, 
+                             function(x){ sum(x > max.boot) }) != 0)
+    if (is.numeric(id.test)) {
+      id.test <- intersect(id.test,
+                           unlist(X.test$Lid)[-over.ind])
+    } else {
+      id.test <- unlist(X.test$Lid)[-over.ind]
+    }
+  }
+  if (!is.numeric(id.test)) {
+    id.test <- unlist(X.test$Lid)
+  }
   
-  # train FPC scores
-  train.fpc <- data.frame(y = y.train, 
-                          x = fpc.score)
-  colnames(train.fpc) <- c("y", paste("FPC", 1:k, sep=""))
+  # bootstrap sample의 time range를 벗어나는 OOB sample 제거
+  id.oob <- NULL
+  if (min(unlist(X.train$Lt[-unique(boot.ind)])) < min(unlist(X.train$Lt[boot.ind]))) {
+    # train set에서의 index(Not id)
+    over.ind <- which(sapply(X.train$Lt[-unique(boot.ind)], 
+                             function(x){ sum( x < min(unlist(X.train$Lt[boot.ind])) ) }) != 0)
+    id.oob <- unlist(X.train$Lid)[-unique(boot.ind)][-over.ind]
+  }
+  if (max(unlist(X.train$Lt[-unique(boot.ind)])) > max(unlist(X.train$Lt[boot.ind]))) {
+    # train set에서의 index(Not id)
+    over.ind <- which(sapply(X.train$Lt[-unique(boot.ind)], 
+                             function(x){ sum( x > max(unlist(X.train$Lt[boot.ind])) ) }) != 0)
+    if (is.numeric(id.oob)) {
+      id.oob <- intersect(id.oob,
+                          unlist(X.train$Lid)[-unique(boot.ind)][-over.ind])
+    } else {
+      id.oob <- unlist(X.train$Lid)[-unique(boot.ind)][-over.ind]
+    }
+  }
+  if (!is.numeric(id.oob)) {
+    id.oob <- unlist(X.train$Lid)[-unique(boot.ind)]
+  }
   
-  # tune the hyperparmeters
-  tune.linear <- tune.svm(y ~ .,
-                          data = train.fpc,
-                          kernel = "linear",
-                          cost = c(10^(-3:1), 2^(5:10)))
-  tune.radial <- tune.svm(y ~ .,
-                          data = train.fpc,
-                          kernel = "radial",
-                          cost = c(10^(-3:1), 2^(5:10)),
-                          gamma = c(10^(-3:1), 2^(5:10)))
-  
-  # fit classifiers
-  fit.logit <- glm(y~., train.fpc, family=binomial)
-  fit.svm.linear <- svm(y ~ .,
-                        data = train.fpc, 
-                        kernel = "linear", 
-                        cost = tune.linear$best.model$cost)
-  fit.svm.radial <- svm(y ~ .,
-                        data = train.fpc, 
-                        kernel = "radial", 
-                        cost = tune.radial$best.model$cost,
-                        gamma = tune.radial$best.model$gamma)
-  fit.lda <- lda(y~., train.fpc)
-  fit.qda <- qda(y~., train.fpc)
-  fit.nb <- naiveBayes(y~., train.fpc)
-  
-  # test FPC scores
-  fpc.score.test <- predict(fpca.fit, X.test$Ly, X.test$Lt, K=k, xiMethod="CE")
-  test.fpc <- data.frame(y = y.test, 
-                         x = fpc.score.test)
-  colnames(test.fpc) <- c("y", paste("FPC", 1:k, sep=""))
-  
-  # predict
-  # pred <- list()
-  # pred.logit <- predict(fit.logit, test.fpc, type="response")
-  # pred[[1]] <- factor(ifelse(pred.logit > 0.5, 1, 0), levels=c(0, 1))
-  # pred[[2]] <- predict(fit.svm.linear, test.fpc)
-  # pred[[3]] <- predict(fit.svm.radial, test.fpc)
-  # pred[[4]] <- predict(fit.lda, test.fpc)$class
-  # pred[[5]] <- predict(fit.qda, test.fpc)$class
-  # pred[[6]] <- predict(fit.nb, test.fpc, type="class")
-  
-  pred.logit <- predict(fit.logit, test.fpc, type="response")
-  pred.logit <- factor(ifelse(pred.logit > 0.5, 1, 0), levels=c(0, 1))
-  pred.svm.linear <- predict(fit.svm.linear, test.fpc)
-  pred.svm.radial <- predict(fit.svm.radial, test.fpc)
-  pred.lda <- predict(fit.lda, test.fpc)$class
-  pred.qda <- predict(fit.qda, test.fpc)$class
-  pred.nb <- predict(fit.nb, test.fpc, type="class")
-  pred <- data.frame(pred.logit,
-                     pred.svm.linear,
-                     pred.svm.radial,
-                     pred.lda,
-                     pred.qda,
-                     pred.nb)
-  
-  # save the error rate
-  err.single <- sapply(pred, function(x){ mean(x != y.test) })
-  
-  # sensitivity and specificity
-  sens_spec <- apply(pred, 2, get_sens_spec, y.test)
-  
-  return(list(err.single = err.single,
-              sensitivitiy = sens_spec[1, ],
-              specificity = sens_spec[2, ],
-              hyper.para = list(tune.linear = tune.linear,
-                                tune.radial = tune.radial)))
+  return(list(id.test = id.test,
+              id.oob = id.oob))
 }
 
 
-
-### Bagging classifier
-get_bag_err <- function(X.train, X.test, y.train, y.test, B = 100, packages = c("fdapace","e1071","MASS"), hyper.para) {
-  tune.linear <- hyper.para$tune.linear
-  tune.radial <- hyper.para$tune.radial
-  
-  # start.time <- Sys.time()
-  N <- length(X.train$Ly)
-  boot.mat <- matrix(sample(1:N, N*B, replace=T), N, B)
-  y.pred <- foreach(b=1:B, .packages=packages) %dopar% {
-    boot.ind <- boot.mat[, b]
+### Fit FPCA and make data using FPC scores
+fit_FPCA <- function(X.train, X.test, y.train, y.test, boot.ind=NULL) {
+  if (is.null(boot.ind)) {
+    ## Not bootstrap (Don't have boot.ind)
+    # fit FPCA for training set
+    fpca.fit <- FPCA(X.train$Ly, 
+                     X.train$Lt, 
+                     optns=list(dataType="Sparse",
+                                methodXi="CE",
+                                # methodSelectK="BIC",
+                                FVEthreshold=0.99,
+                                verbose=F))
+    k <- fpca.fit$selectK   # optimal number of PCs
+    fpc.score <- fpca.fit$xiEst
     
-    # bootstrap sample의 time range를 벗어나는 test set sample 제거
-    id.test <- NULL
-    max.boot <- max(unlist(X.train$Lt[boot.ind]))
-    min.boot <- min(unlist(X.train$Lt[boot.ind]))
-    if (min(unlist(X.test$Lt)) < min.boot) {
-      # train set에서의 index(Not id)
-      over.ind <- which(sapply(X.test$Lt, 
-                               function(x){ sum(x < min.boot) }) != 0)
-      id.test <- unlist(X.test$Lid)[-over.ind]
-    }
-    if (max(unlist(X.test$Lt)) > max.boot) {
-      # train set에서의 index(Not id)
-      over.ind <- which(sapply(X.test$Lt, 
-                               function(x){ sum(x > max.boot) }) != 0)
-      if (is.numeric(id.test)) {
-        id.test <- intersect(id.test,
-                             unlist(X.test$Lid)[-over.ind])
-      } else {
-        id.test <- unlist(X.test$Lid)[-over.ind]
-      }
-    }
-    if (!is.numeric(id.test)) {
-      id.test <- unlist(X.test$Lid)
-    }
+    # train FPC scores
+    train.fpc <- data.frame(y = y.train, 
+                            x = fpc.score)
+    colnames(train.fpc) <- c("y", paste("FPC", 1:k, sep=""))
     
-    # bootstrap sample의 time range를 벗어나는 OOB sample 제거
-    id.oob <- NULL
-    if (min(unlist(X.train$Lt[-unique(boot.ind)])) < min(unlist(X.train$Lt[boot.ind]))) {
-      # train set에서의 index(Not id)
-      over.ind <- which(sapply(X.train$Lt[-unique(boot.ind)], 
-                               function(x){ sum( x < min(unlist(X.train$Lt[boot.ind])) ) }) != 0)
-      id.oob <- unlist(X.train$Lid)[-unique(boot.ind)][-over.ind]
-    }
-    if (max(unlist(X.train$Lt[-unique(boot.ind)])) > max(unlist(X.train$Lt[boot.ind]))) {
-      # train set에서의 index(Not id)
-      over.ind <- which(sapply(X.train$Lt[-unique(boot.ind)], 
-                               function(x){ sum( x > max(unlist(X.train$Lt[boot.ind])) ) }) != 0)
-      if (is.numeric(id.oob)) {
-        id.oob <- intersect(id.oob,
-                            unlist(X.train$Lid)[-unique(boot.ind)][-over.ind])
-      } else {
-        id.oob <- unlist(X.train$Lid)[-unique(boot.ind)][-over.ind]
-      }
-    }
-    if (!is.numeric(id.oob)) {
-      id.oob <- unlist(X.train$Lid)[-unique(boot.ind)]
-    }
+    # test FPC scores
+    fpc.score.test <- predict(fpca.fit, X.test$Ly, X.test$Lt, K=k, xiMethod="CE")
+    test.fpc <- data.frame(y = y.test, 
+                           x = fpc.score.test)
+    colnames(test.fpc) <- c("y", paste("FPC", 1:k, sep=""))
+    
+    return(list(train.fpc = train.fpc,
+                test.fpc = test.fpc,
+                fpca.fit = fpca.fit,
+                k = k))
+  } else {
+    ## Bootstrap (Have boot.ind)
+    # get index of test and OOB samples without out-of-range time points
+    id_test_oob <- get_id_test_oob(X.train, X.test, boot.ind)
+    id.test <- id_test_oob$id.test
+    id.oob <- id_test_oob$id.oob
     
     # fit FPCA for bootstrapped data
     fpca.fit <- FPCA(X.train$Ly[boot.ind], 
@@ -259,48 +203,16 @@ get_bag_err <- function(X.train, X.test, y.train, y.test, B = 100, packages = c(
                             x = fpc.score)
     colnames(train.fpc) <- c("y", paste("FPC", 1:k, sep=""))
     
-    # classifiers with bootstrapped FPC scores
-    fit.logit <- glm(y~., train.fpc, family=binomial)
-    fit.svm.linear <- svm(y ~ ., 
-                          data = train.fpc,
-                          kernel = "linear",
-                          cost = tune.linear$best.model$cost,
-                          probability = T)
-    fit.svm.radial <- svm(y ~ ., 
-                          data = train.fpc,
-                          kernel = "radial",
-                          cost = tune.radial$best.model$cost,
-                          gamma = tune.radial$best.model$gamma,
-                          probability = T)
-    fit.lda <- lda(y~., train.fpc)
-    fit.qda <- qda(y~., train.fpc)
-    fit.nb <- naiveBayes(y~., train.fpc)
-    
     # test FPC scores
-    ind <- which(unlist(X.test$Lid) %in% id.test)
-    fpc.score.test <- predict(fpca.fit, X.test$Ly[ind], X.test$Lt[ind], K=k, xiMethod="CE")
-    test.fpc <- data.frame(y=y.test[ind], 
-                           x=fpc.score.test)
+    test.ind <- which(unlist(X.test$Lid) %in% id.test)
+    fpc.score.test <- predict(fpca.fit, 
+                              X.test$Ly[test.ind], 
+                              X.test$Lt[test.ind], 
+                              K=k, 
+                              xiMethod="CE")
+    test.fpc <- data.frame(y = y.test[test.ind],
+                           x = fpc.score.test)
     colnames(test.fpc) <- c("y", paste("FPC", 1:k, sep=""))
-    
-    # predict
-    pred.logit <- predict(fit.logit, test.fpc, type="response")
-    pred.logit <- factor(ifelse(pred.logit > 0.5, 1, 0), levels=c(0, 1))
-    pred.svm.linear <- predict(fit.svm.linear, test.fpc)
-    pred.svm.radial <- predict(fit.svm.radial, test.fpc)
-    pred.lda <- predict(fit.lda, test.fpc)$class
-    pred.qda <- predict(fit.qda, test.fpc)$class
-    pred.nb <- predict(fit.nb, test.fpc, type="class")
-    
-    # posterior probabilities
-    prob.logit <- predict(fit.logit, test.fpc, type="response")
-    prob.svm.linear <- attr(predict(fit.svm.linear, test.fpc, probability = T),
-                            "probabilities")[, 1]
-    prob.svm.radial <- attr(predict(fit.svm.radial, test.fpc, probability = T), 
-                            "probabilities")[, 1]
-    prob.lda <- predict(fit.lda, test.fpc)$posterior[, 2]
-    prob.qda <- predict(fit.qda, test.fpc)$posterior[, 2]
-    prob.nb <- predict(fit.nb, test.fpc, type="raw")[, 2]
     
     # OOB FPC scores
     oob.ind <- which(X.train$Lid %in% id.oob)
@@ -309,53 +221,203 @@ get_bag_err <- function(X.train, X.test, y.train, y.test, B = 100, packages = c(
                              X.train$Lt[oob.ind],
                              K=k,
                              xiMethod="CE")
-    oob.fpc <- data.frame(y=y.train[oob.ind],
-                          x=fpc.score.oob)
+    oob.fpc <- data.frame(y = y.train[oob.ind],
+                          x = fpc.score.oob)
     colnames(oob.fpc) <- c("y", paste("FPC", 1:k, sep=""))
     
+    return(list(train.fpc = train.fpc,
+                test.fpc = test.fpc,
+                oob.fpc = oob.fpc,
+                id.test = id.test,
+                test.ind = test.ind,
+                fpca.fit = fpca.fit,
+                k = k))
+  }
+}
+
+
+### Fit classification models
+fit_classif <- function(formula, train.fpc, hyper.para=NULL) {
+  # hyperparameters
+  tune.linear <- hyper.para$tune.linear
+  tune.radial <- hyper.para$tune.radial
+  
+  # fit classifiers
+  fit.logit <- glm(formula, train.fpc, family=binomial)
+  fit.svm.linear <- svm(formula,
+                        data=train.fpc, 
+                        kernel="linear", 
+                        cost=tune.linear$best.model$cost)
+  fit.svm.radial <- svm(formula,
+                        data=train.fpc, 
+                        kernel="radial", 
+                        cost=tune.radial$best.model$cost,
+                        gamma=tune.radial$best.model$gamma)
+  fit.lda <- lda(formula, train.fpc)
+  fit.qda <- qda(formula, train.fpc)
+  fit.nb <- naiveBayes(formula, train.fpc)
+  
+  return(list(fit.logit = fit.logit,
+              fit.svm.linear = fit.svm.linear,
+              fit.svm.radial = fit.svm.radial,
+              fit.lda = fit.lda,
+              fit.qda = fit.qda,
+              fit.nb = fit.nb))
+}
+
+
+### Predict obtained by fit_classif
+predict_classif <- function(fit_classif, test.fpc) {
+  pred <- data.frame(logit = factor(ifelse(predict(fit_classif$fit.logit, test.fpc, type="response") > 0.5, 1, 0), levels=c(0, 1)),
+                     svm.linear = predict(fit_classif$fit.svm.linear, test.fpc),
+                     svm.radial = predict(fit_classif$fit.svm.radial, test.fpc),
+                     lda = predict(fit_classif$fit.lda, test.fpc)$class,
+                     qda = predict(fit_classif$fit.qda, test.fpc)$class,
+                     nb = predict(fit_classif$fit.nb, test.fpc, type="class"))
+  
+  return(pred)
+}
+
+
+### prediction of aggregated classifier and its classification error rate
+agg_classif <- function(pred, method) {
+  if (method == "majority") {
+    # majority vote
+    pred_agg <- pred %>% 
+      group_by(id, y) %>% 
+      summarise(logit = majority_vote(logit),
+                svm.linear = majority_vote(svm.linear),
+                svm.radial = majority_vote(svm.radial),
+                lda = majority_vote(lda),
+                qda = majority_vote(qda),
+                nb = majority_vote(nb))
+  } else if (method == "oob") {
+    # OOB error weighted vote
+    pred_agg <- pred %>% 
+      mutate(w.logit = 1/ifelse(oob.logit == 0, min(oob.logit[oob.logit > 0]), oob.logit),
+             w.svm.linear = 1/ifelse(oob.svm.linear == 0, min(oob.svm.linear[oob.svm.linear > 0]), oob.svm.linear),
+             w.svm.radial = 1/ifelse(oob.svm.radial == 0, min(oob.svm.radial[oob.svm.radial > 0]), oob.svm.radial),
+             w.lda = 1/ifelse(oob.lda == 0, min(oob.lda[oob.lda > 0]), oob.lda),
+             w.qda = 1/ifelse(oob.qda == 0, min(oob.qda[oob.qda > 0]), oob.qda),
+             w.nb = 1/ifelse(oob.nb == 0, min(oob.nb[oob.nb > 0]), oob.nb)) %>%
+      # mutate(w.logit = 1/ifelse(oob.logit == 0, runif(1, 0, min(oob.logit[oob.logit > 0])), oob.logit),
+      #        w.svm.linear = 1/ifelse(oob.svm.linear == 0, runif(1, 0, min(oob.svm.linear[oob.svm.linear > 0])), oob.svm.linear),
+      #        w.svm.radial = 1/ifelse(oob.svm.radial == 0, runif(1, 0, min(oob.svm.radial[oob.svm.radial > 0])), oob.svm.radial),
+      #        w.lda = 1/ifelse(oob.lda == 0, runif(1, 0, min(oob.lda[oob.lda > 0])), oob.lda),
+      #        w.qda = 1/ifelse(oob.qda == 0, runif(1, 0, min(oob.qda[oob.qda > 0])), oob.qda),
+      #        w.nb = 1/ifelse(oob.nb == 0, runif(1, 0, min(oob.nb[oob.nb > 0])), oob.nb)) %>% 
+      group_by(id, y) %>% 
+      summarise(logit = factor(ifelse(sum(w.logit*as.numeric(logit)) / sum(w.logit) > 1.5, 1, 0), 
+                               levels=c(0, 1)),
+                svm.linear = factor(ifelse(sum(w.svm.linear*as.numeric(svm.linear)) / sum(w.svm.linear) > 1.5, 1, 0), 
+                                    levels=c(0, 1)),
+                svm.radial = factor(ifelse(sum(w.svm.radial*as.numeric(svm.radial)) / sum(w.svm.radial) > 1.5, 1, 0), 
+                                    levels=c(0, 1)),
+                lda = factor(ifelse(sum(w.lda*as.numeric(lda)) / sum(w.lda) > 1.5, 1, 0), 
+                             levels=c(0, 1)),
+                qda = factor(ifelse(sum(w.qda*as.numeric(qda)) / sum(w.qda) > 1.5, 1, 0), 
+                             levels=c(0, 1)),
+                nb = factor(ifelse(sum(w.nb*as.numeric(nb)) / sum(w.nb) > 1.5, 1, 0), 
+                            levels=c(0, 1)))
+  }
+  
+  # classification error rate of aggregated classsifier
+  err_agg <- apply(pred_agg[, 3:8], 2, function(x){ mean(x != pred_agg$y) })
+  
+  return(list(pred = pred_agg,
+              error = err_agg))
+}
+
+
+
+### Single classifier
+get_single_err <- function(X.train, X.test, y.train, y.test) {
+  # obtain FPC scores of train and test data
+  fit.fpc <- fit_FPCA(X.train, X.test, y.train, y.test)
+  train.fpc <- fit.fpc$train.fpc
+  test.fpc <- fit.fpc$test.fpc
+  k <- fit.fpc$k
+  
+  # tune the hyperparmeters
+  tune.linear <- tune.svm(y ~ .,
+                          data = train.fpc,
+                          kernel = "linear",
+                          cost = c(10^(-3:1), 2^(5:10)))
+  tune.radial <- tune.svm(y ~ .,
+                          data = train.fpc,
+                          kernel = "radial",
+                          cost = c(10^(-3:1), 2^(5:10)),
+                          gamma = c(10^(-3:1), 2^(5:10)))
+  
+  # fit classifiers
+  fit <- fit_classif(y~., train.fpc, hyper.para=list(tune.linear = tune.linear,
+                                                     tune.radial = tune.radial))
+  
+  # predict
+  pred <- predict_classif(fit, test.fpc)
+  
+  # save the error rate
+  err.single <- apply(pred, 2, function(x){ mean(x != y.test) })
+  
+  # # sensitivity and specificity
+  # sens_spec <- apply(pred, 2, get_sens_spec, y.test)
+  
+  return(list(err.single = err.single,
+              model = fit,   # fitted model objects
+              pred = pred,   # prediction
+              # sensitivitiy = sens_spec[1, ],
+              # specificity = sens_spec[2, ],
+              hyper.para = list(tune.linear = tune.linear,
+                                tune.radial = tune.radial)))
+}
+
+
+
+### Bagging classifier
+get_bag_err <- function(X.train, X.test, y.train, y.test, B = 100, packages = c("fdapace","e1071","MASS"), hyper.para) {
+  # list of manual functions
+  ftns <- c("fit_FPCA","get_id_test_oob","fit_classif","predict_classif")
+  
+  N <- length(X.train$Ly)
+  boot.mat <- matrix(sample(1:N, N*B, replace=T), N, B)   # index of bootstrap samples
+  
+  # make predictions from bootstrap samples
+  y.pred <- foreach(b=1:B, .packages=packages, .export=ftns) %dopar% {
+    boot.ind <- boot.mat[, b]
+    
+    # obtain FPC scores of train, test, OOB data
+    fit.fpc <- fit_FPCA(X.train, X.test, y.train, y.test, boot.ind=boot.ind)
+    train.fpc <- fit.fpc$train.fpc
+    test.fpc <- fit.fpc$test.fpc
+    oob.fpc <- fit.fpc$oob.fpc
+    id.test <- fit.fpc$id.test
+    test.ind <- fit.fpc$test.ind
+    k <- fit.fpc$k
+    
+    # classifiers with bootstrapped FPC scores
+    fit <- fit_classif(y~., train.fpc, hyper.para=hyper.para)
+    
+    # predict
+    pred <- predict_classif(fit, test.fpc)
+    
     # OOB error rate
-    oob.error <- c(mean(factor(ifelse(predict(fit.logit, oob.fpc, type="response") > 0.5, 1, 0), levels=c(0, 1)) != oob.fpc$y),
-                   mean(predict(fit.svm.linear, oob.fpc) != oob.fpc$y),
-                   mean(predict(fit.svm.radial, oob.fpc) != oob.fpc$y),
-                   mean(predict(fit.lda, oob.fpc)$class != oob.fpc$y),
-                   mean(predict(fit.qda, oob.fpc)$class != oob.fpc$y),
-                   mean(predict(fit.nb, oob.fpc, type='class') != oob.fpc$y) )
+    oob.error <- apply(predict_classif(fit, oob.fpc),
+                       2,
+                       function(x){ mean(x != oob.fpc$y) })
     
     # train error rate
-    train.error <- c(mean(factor(ifelse(predict(fit.logit, train.fpc, type="response") > 0.5, 1, 0), levels=c(0, 1)) != train.fpc$y),
-                     mean(predict(fit.svm.linear, train.fpc) != train.fpc$y),
-                     mean(predict(fit.svm.radial, train.fpc) != train.fpc$y),
-                     mean(predict(fit.lda, train.fpc)$class != train.fpc$y),
-                     mean(predict(fit.qda, train.fpc)$class != train.fpc$y),
-                     mean(predict(fit.nb, train.fpc, type='class') != train.fpc$y) )
+    train.error <- apply(predict_classif(fit, train.fpc),
+                         2,
+                         function(x){ mean(x != train.fpc$y) })
     
     return( list(oob.error = oob.error,
                  train.error = train.error,
+                 model = fit,   # fitted model objects
+                 pred = pred,   # prediction
                  boot = data.frame(id = id.test,
-                                   y = y.test[ind],
-                                   # predicted value
-                                   logit = pred.logit,
-                                   svm.linear = pred.svm.linear,
-                                   svm.radial = pred.svm.radial,
-                                   lda = pred.lda,
-                                   qda = pred.qda,
-                                   nb = pred.nb,
-                                   # # predicted value * OOB accuracy
-                                   # logit.oob = as.numeric(pred.logit) * (1/oob.error[1]),
-                                   # svm.linear.oob = as.numeric(pred.svm.linear) * (1/oob.error[2]),
-                                   # svm.radial.oob = as.numeric(pred.svm.radial) * (1/oob.error[3]),
-                                   # lda.oob = as.numeric(pred.lda) * (1/oob.error[4]),
-                                   # qda.oob = as.numeric(pred.qda) * (1/oob.error[5]),
-                                   # nb.oob = as.numeric(pred.nb) * (1/oob.error[6]),
-
-                                   # logit.oob = prob.logit * (1 - oob.error[1]),
-                                   # svm.linear.oob = prob.svm.linear * (1 - oob.error[2]),
-                                   # svm.radial.oob = prob.svm.radial * (1 - oob.error[3]),
-                                   # lda.oob = prob.lda * (1 - oob.error[4]),
-                                   # qda.oob = prob.qda * (1 - oob.error[5]),
-                                   # nb.oob = prob.nb * (1 - oob.error[6]),
-                                   
-                                   # oob error
+                                   y = y.test[test.ind],
+                                   pred,   # prediction of test set (data.frame)
+                                   # OOB error
                                    oob.logit = oob.error[1],
                                    oob.svm.linear = oob.error[2],
                                    oob.svm.radial = oob.error[3],
@@ -363,89 +425,26 @@ get_bag_err <- function(X.train, X.test, y.train, y.test, B = 100, packages = c(
                                    oob.qda = oob.error[5],
                                    oob.nb = oob.error[6])) )
   }
-  # end.time <- Sys.time()
-  # print(end.time - start.time)
   
-  ## save the accuracy
-  res <- as.data.frame(rbindlist(lapply(y.pred, function(x){ x$boot })))
-  # majority voting
-  pred.major <- res %>% 
-    group_by(id, y) %>% 
-    summarise(logit = majority_vote(logit),
-              svm.linear = majority_vote(svm.linear),
-              svm.radial = majority_vote(svm.radial),
-              lda = majority_vote(lda),
-              qda = majority_vote(qda),
-              nb = majority_vote(nb))
-  err.majority <- 1 - apply(pred.major[, 3:8], 2, function(x){ mean(x == pred.major$y) })
-  sens.spec.major <- apply(pred.major[, 3:8], 2, get_sens_spec, y.test)   # sensitivity and specificity
+  # make predictions of classifiers into row-wise dataframe
+  pred <- as.data.frame(rbindlist(lapply(y.pred, function(x){ x$boot })))
   
-  # res %>% 
-  #   group_by(id, y) %>% 
-  #   summarise(numer = sum(svm.linear.oob),
-  #             denomin = sum(1/oob.err.svm.linear))
-  #             
-  # min(res$oob.err.svm.linear[res$oob.err.svm.linear > 0])
-  # 
-  # x <- res %>% 
-  #   dplyr::select(id, y, svm.linear, oob.err.svm.linear)
-  # d <- x %>% 
-  #   mutate(oob.weight = 1/ifelse(oob.err.svm.linear == 0, min(oob.err.svm.linear[oob.err.svm.linear > 0]), oob.err.svm.linear)) %>% 
-  #   group_by(id, y) %>% 
-  #   summarise(oob = sum(oob.weight*as.numeric(svm.linear)) / sum(oob.weight))
+  # majority vote
+  pred.major <- agg_classif(pred, method="majority")
+  err.majority <- pred.major$error
+  # sens.spec.major <- apply(pred.major$pred[, 3:8], 2, get_sens_spec, y.test)   # sensitivity and specificity
   
-  
-  # oob error
-  # oob.acc <- colSums( 1 - t(sapply(y.pred, function(x){ x$oob.error })) )
-  pred.oob <- res %>% 
-    mutate(w.logit = 1/ifelse(oob.logit == 0, min(oob.logit[oob.logit > 0]), oob.logit),
-           w.svm.linear = 1/ifelse(oob.svm.linear == 0, min(oob.svm.linear[oob.svm.linear > 0]), oob.svm.linear),
-           w.svm.radial = 1/ifelse(oob.svm.radial == 0, min(oob.svm.radial[oob.svm.radial > 0]), oob.svm.radial),
-           w.lda = 1/ifelse(oob.lda == 0, min(oob.lda[oob.lda > 0]), oob.lda),
-           w.qda = 1/ifelse(oob.qda == 0, min(oob.qda[oob.qda > 0]), oob.qda),
-           w.nb = 1/ifelse(oob.nb == 0, min(oob.nb[oob.nb > 0]), oob.nb)) %>%
-    # mutate(w.logit = 1/ifelse(oob.logit == 0, runif(1, 0, min(oob.logit[oob.logit > 0])), oob.logit),
-    #        w.svm.linear = 1/ifelse(oob.svm.linear == 0, runif(1, 0, min(oob.svm.linear[oob.svm.linear > 0])), oob.svm.linear),
-    #        w.svm.radial = 1/ifelse(oob.svm.radial == 0, runif(1, 0, min(oob.svm.radial[oob.svm.radial > 0])), oob.svm.radial),
-    #        w.lda = 1/ifelse(oob.lda == 0, runif(1, 0, min(oob.lda[oob.lda > 0])), oob.lda),
-    #        w.qda = 1/ifelse(oob.qda == 0, runif(1, 0, min(oob.qda[oob.qda > 0])), oob.qda),
-    #        w.nb = 1/ifelse(oob.nb == 0, runif(1, 0, min(oob.nb[oob.nb > 0])), oob.nb)) %>% 
-    group_by(id, y) %>% 
-    summarise(logit = factor(ifelse(sum(w.logit*as.numeric(logit)) / sum(w.logit) > 1.5, 1, 0), 
-                             levels=c(0, 1)),
-              svm.linear = factor(ifelse(sum(w.svm.linear*as.numeric(svm.linear)) / sum(w.svm.linear) > 1.5, 1, 0), 
-                                  levels=c(0, 1)),
-              svm.radial = factor(ifelse(sum(w.svm.radial*as.numeric(svm.radial)) / sum(w.svm.radial) > 1.5, 1, 0), 
-                                  levels=c(0, 1)),
-              lda = factor(ifelse(sum(w.lda*as.numeric(lda)) / sum(w.lda) > 1.5, 1, 0), 
-                           levels=c(0, 1)),
-              qda = factor(ifelse(sum(w.qda*as.numeric(qda)) / sum(w.qda) > 1.5, 1, 0), 
-                           levels=c(0, 1)),
-              nb = factor(ifelse(sum(w.nb*as.numeric(nb)) / sum(w.nb) > 1.5, 1, 0), 
-                          levels=c(0, 1)))
-  # pred.oob <- res %>% 
-  #   group_by(id, y) %>% 
-  #   summarise(logit = factor(ifelse(sum(logit.oob)/oob.acc[1] > 1.5, 1, 0), 
-  #                            levels=c(0, 1)),
-  #             svm.linear = factor(ifelse(sum(svm.linear.oob)/oob.acc[2] > 1.5, 1, 0), 
-  #                                 levels=c(0, 1)),
-  #             svm.radial = factor(ifelse(sum(svm.radial.oob)/oob.acc[3] > 1.5, 1, 0), 
-  #                                 levels=c(0, 1)),
-  #             lda = factor(ifelse(sum(lda.oob)/oob.acc[4] > 1.5, 1, 0), 
-  #                          levels=c(0, 1)),
-  #             qda = factor(ifelse(sum(qda.oob)/oob.acc[5] > 1.5, 1, 0), 
-  #                          levels=c(0, 1)),
-  #             nb = factor(ifelse(sum(nb.oob)/oob.acc[6] > 1.5, 1, 0), 
-  #                         levels=c(0, 1)))
-  err.oob <- 1 - apply(pred.oob[, 3:8], 2, function(x){ mean(x == pred.oob$y) })
-  sens.spec.oob <- apply(pred.oob[, 3:8], 2, get_sens_spec, y.test)   # sensitivity and specificity
+  # oob error weighted vote
+  pred.oob <- agg_classif(pred, method="oob")
+  err.oob <- pred.oob$error
+  # sens.spec.oob <- apply(pred.oob$pred[, 3:8], 2, get_sens_spec, y.test)   # sensitivity and specificity
   
   return(list(err.majority = err.majority,
               err.oob = err.oob,
-              sens.major = sens.spec.major[1, ],
-              spec.major = sens.spec.major[2, ],
-              sens.oob = sens.spec.oob[1, ],
-              spec.oob = sens.spec.oob[2, ],
+              # sens.major = sens.spec.major[1, ],
+              # spec.major = sens.spec.major[2, ],
+              # sens.oob = sens.spec.oob[1, ],
+              # spec.oob = sens.spec.oob[2, ],
               y.pred = y.pred))
 }
 
