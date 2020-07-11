@@ -1,13 +1,7 @@
 setwd("Simulation")
 
-library(tidyverse)    # dplyr, ggplot2, etc
-library(doParallel)   # parallel computing
-library(fdapace)      # functional PCA
-library(e1071)        # SVM, Naive bayes
-library(MASS)         # LDA, QDA
-library(data.table)   # list rbind
 library(gridExtra)    # subplot in ggplot2
-library(reshape2)     # melt function
+# library(reshape2)     # melt function
 source("R/bagFPCA.R")
 
 # parallel computing setting
@@ -58,9 +52,8 @@ for (simm in 1:100) {
   ### Single classifier
   err.single <- get_single_err(X.train, X.test, y.train, y.test)
   
-  ## Bagging
-  # Bootstrap aggregating
-  err.bag <- get_bag_err(X.train, X.test, y.train, y.test, B = 50, packages = packages, hyper.para = err.single$hyper.para)
+  ### Bagging
+  err.bag <- get_bag_err(X.train, X.test, y.train, y.test, B = 500, packages = packages, hyper.para = err.single$hyper.para)
   
   end.time <- Sys.time()
   print(end.time - start.time)
@@ -97,17 +90,35 @@ rownames(res) <- c("Single","Majority vote","OOB weight")
 res
 
 
-plot(FPC1, FPC2, data=train.fpc)
 
 ggplot(train.fpc, aes(FPC1, FPC2, col=y)) + 
   geom_point()
 
 
+# error rate of different number of models
+B <- 500
+p1 <- data.frame(num=1:B,
+           err.bag$err$majority) %>% 
+  gather("model", "error", -num) %>% 
+  ggplot(aes(num, error, color=model)) +
+  geom_line() +
+  theme_bw() +
+  ggtitle("Majority vote") +
+  geom_hline(yintercept=min(err.single$err.single), size=1.5)
+p2 <- data.frame(num=1:B,
+           err.bag$err$oob) %>% 
+  gather("model", "error", -num) %>% 
+  ggplot(aes(num, error, color=model)) +
+  geom_line() +
+  theme_bw() +
+  ggtitle("OOB error weighted vote") +
+  geom_hline(yintercept=min(err.single$err.single), size=1.5)
+gridExtra::grid.arrange(p1, p2)
+
+res
 
 
-  
-result[[1]][1:3, ]
-
+## other ensemble methods
 library(ranger)
 rf.fit <- ranger(y~., train.fpc, num.trees=100)
 pred <- predict(rf.fit, test.fpc)

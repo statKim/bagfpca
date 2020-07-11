@@ -2,6 +2,13 @@
 ### bagging classifier with FPCA
 ##################################
 
+require(tidyverse)    # dplyr, ggplot2, etc
+require(doParallel)   # parallel computing
+require(fdapace)      # functional PCA
+require(e1071)        # SVM, Naive bayes
+require(MASS)         # LDA, QDA
+require(data.table)   # list rbind
+
 ### majority voting functon
 majority_vote <- function(v) {
   uniqv <- unique(v)
@@ -290,16 +297,19 @@ agg_classif <- function(pred, method) {
                 svm.radial = majority_vote(svm.radial),
                 lda = majority_vote(lda),
                 qda = majority_vote(qda),
-                nb = majority_vote(nb))
+                nb = majority_vote(nb),
+                .groups="drop")   # remove grouping information
   } else if (method == "oob") {
     # OOB error weighted vote
     pred_agg <- pred %>% 
+      # if OOB error = 0, w = min(other OOB error)
       mutate(w.logit = 1/ifelse(oob.logit == 0, min(oob.logit[oob.logit > 0]), oob.logit),
              w.svm.linear = 1/ifelse(oob.svm.linear == 0, min(oob.svm.linear[oob.svm.linear > 0]), oob.svm.linear),
              w.svm.radial = 1/ifelse(oob.svm.radial == 0, min(oob.svm.radial[oob.svm.radial > 0]), oob.svm.radial),
              w.lda = 1/ifelse(oob.lda == 0, min(oob.lda[oob.lda > 0]), oob.lda),
              w.qda = 1/ifelse(oob.qda == 0, min(oob.qda[oob.qda > 0]), oob.qda),
              w.nb = 1/ifelse(oob.nb == 0, min(oob.nb[oob.nb > 0]), oob.nb)) %>%
+      # # if OOB error = 0, w = runif(1, 0, min(other OOB error))
       # mutate(w.logit = 1/ifelse(oob.logit == 0, runif(1, 0, min(oob.logit[oob.logit > 0])), oob.logit),
       #        w.svm.linear = 1/ifelse(oob.svm.linear == 0, runif(1, 0, min(oob.svm.linear[oob.svm.linear > 0])), oob.svm.linear),
       #        w.svm.radial = 1/ifelse(oob.svm.radial == 0, runif(1, 0, min(oob.svm.radial[oob.svm.radial > 0])), oob.svm.radial),
@@ -318,7 +328,8 @@ agg_classif <- function(pred, method) {
                 qda = factor(ifelse(sum(w.qda*as.numeric(qda)) / sum(w.qda) > 1.5, 1, 0), 
                              levels=c(0, 1)),
                 nb = factor(ifelse(sum(w.nb*as.numeric(nb)) / sum(w.nb) > 1.5, 1, 0), 
-                            levels=c(0, 1)))
+                            levels=c(0, 1)),
+                .groups="drop")   # remove grouping information
   }
   
   # classification error rate of aggregated classsifier
@@ -365,8 +376,6 @@ get_single_err <- function(X.train, X.test, y.train, y.test) {
   return(list(err.single = err.single,
               model = fit,   # fitted model objects
               pred = pred,   # prediction
-              # sensitivitiy = sens_spec[1, ],
-              # specificity = sens_spec[2, ],
               hyper.para = list(tune.linear = tune.linear,
                                 tune.radial = tune.radial)))
 }
@@ -426,25 +435,51 @@ get_bag_err <- function(X.train, X.test, y.train, y.test, B = 100, packages = c(
                                    oob.nb = oob.error[6])) )
   }
   
-  # make predictions of classifiers into row-wise dataframe
-  pred <- as.data.frame(rbindlist(lapply(y.pred, function(x){ x$boot })))
+  # calculate error rate for different number of aggregated models
+  for (b in 1:B) {
+    # make predictions of classifiers into row-wise dataframe
+    pred <- lapply(y.pred[1:b], function(x){ x$boot }) %>% 
+      rbindlist() %>% 
+      as.data.frame()
+    
+    # majority vote
+    pred.majoriry <- agg_classif(pred, method="majority")
+    
+    # oob error weighted vote
+    pred.oob <- agg_classif(pred, method="oob")
+    
+    if (b == 1) {
+      err.majority <- pred.majoriry$error
+      err.oob <- pred.oob$error
+    } else {
+      err.majority <- rbind(err.majority, 
+                            pred.majoriry$error)
+      err.oob <- rbind(err.oob, 
+                       pred.oob$error)
+    }
+  }
+  rownames(err.majority) <- paste("B=", 1:B, sep="")
+  rownames(err.oob) <- paste("B=", 1:B, sep="")
   
-  # majority vote
-  pred.major <- agg_classif(pred, method="majority")
-  err.majority <- pred.major$error
-  # sens.spec.major <- apply(pred.major$pred[, 3:8], 2, get_sens_spec, y.test)   # sensitivity and specificity
+  # # make predictions of classifiers into row-wise dataframe
+  # pred <- lapply(y.pred, function(x){ x$boot }) %>% 
+  #   rbindlist() %>% 
+  #   as.data.frame()
+  # 
+  # # majority vote
+  # pred.majoriry <- agg_classif(pred, method="majority")
+  # err.majority <- pred.majoriry$error
+  # # sens.spec.major <- apply(pred.majoriry$pred[, 3:8], 2, get_sens_spec, y.test)   # sensitivity and specificity
+  # 
+  # # oob error weighted vote
+  # pred.oob <- agg_classif(pred, method="oob")
+  # err.oob <- pred.oob$error
+  # # sens.spec.oob <- apply(pred.oob$pred[, 3:8], 2, get_sens_spec, y.test)   # sensitivity and specificity
   
-  # oob error weighted vote
-  pred.oob <- agg_classif(pred, method="oob")
-  err.oob <- pred.oob$error
-  # sens.spec.oob <- apply(pred.oob$pred[, 3:8], 2, get_sens_spec, y.test)   # sensitivity and specificity
-  
-  return(list(err.majority = err.majority,
-              err.oob = err.oob,
-              # sens.major = sens.spec.major[1, ],
-              # spec.major = sens.spec.major[2, ],
-              # sens.oob = sens.spec.oob[1, ],
-              # spec.oob = sens.spec.oob[2, ],
+  return(list(err.majority = err.majority[B, ],
+              err.oob = err.oob[B, ],
+              err = list(majority = err.majority,
+                         oob = err.oob),
               y.pred = y.pred))
 }
 
