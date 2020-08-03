@@ -36,7 +36,7 @@ result <- list()
 set.seed(1000)
 seed <- sample(1:10000, 100)
 for (simm in 1:100) {
-  # simm <- 10
+  # simm <- 5
   print( paste(simm, ":", seed[simm]) )
   set.seed(seed[simm])
   
@@ -53,7 +53,7 @@ for (simm in 1:100) {
   err.single <- get_single_err(X.train, X.test, y.train, y.test)
   
   ### Bagging
-  err.bag <- get_bag_err(X.train, X.test, y.train, y.test, B = 500, packages = packages, hyper.para = err.single$hyper.para)
+  err.bag <- get_bag_err(X.train, X.test, y.train, y.test, B = 100, packages = packages, hyper.para = err.single$hyper.para)
   
   end.time <- Sys.time()
   print(end.time - start.time)
@@ -96,9 +96,9 @@ ggplot(train.fpc, aes(FPC1, FPC2, col=y)) +
 
 
 # error rate of different number of models
-B <- 500
+B <- 100
 p1 <- data.frame(num=1:B,
-           err.bag$err$majority) %>% 
+                 err.bag$err$majority) %>% 
   gather("model", "error", -num) %>% 
   ggplot(aes(num, error, color=model)) +
   geom_line() +
@@ -106,7 +106,7 @@ p1 <- data.frame(num=1:B,
   ggtitle("Majority vote") +
   geom_hline(yintercept=min(err.single$err.single), size=1.5)
 p2 <- data.frame(num=1:B,
-           err.bag$err$oob) %>% 
+                 err.bag$err$oob) %>% 
   gather("model", "error", -num) %>% 
   ggplot(aes(num, error, color=model)) +
   geom_line() +

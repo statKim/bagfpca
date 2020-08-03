@@ -41,10 +41,36 @@ get_sens_spec <- function(pred, y.test) {
 ### train, test split
 ##  - input data form : cbind(id, time, val, y)
 train_test_split <- function(data, train.prop=2/3) {
+  # ### train, test split => train set에 없는 time point 포함시 에러
+  # # obtain train index with containing min(time), max(time)
+  # min.grid <- data %>%
+  #   filter(time == min(time)) %>%
+  #   dplyr::select(id) %>%
+  #   unlist()
+  # max.grid <- data %>%
+  #   filter(time == max(time)) %>%
+  #   dplyr::select(id) %>%
+  #   unlist()
+  # 
+  # # select randomly from min(time), max(time) for train set
+  # min.train <- sample(min.grid, 1)
+  # max.train <- max.grid
+  # # max.train <- sample(max.grid, 1)
+  # 
+  # # obtain index of train and test
+  # id <- unique(data$id)
+  # N <- length(unique(data$id))
+  # N.train <- ceiling(N * train.prop)
+  # id.train <- c(sample(id, N.train-2),
+  #               min.train,
+  #               max.train)
+  # id.test <- id[-which(id %in% id.train)]
+  
+  
   # # train, test split => range(test set) > range(train set) 인 경우의 id 제거
-  # min.max.grid <- data %>% 
-  #   filter(time %in% range(time)) %>% 
-  #   dplyr::select(id) %>% 
+  # min.max.grid <- data %>%
+  #   filter(time %in% range(time)) %>%
+  #   dplyr::select(id) %>%
   #   unique
   # id <- setdiff(unique(data$id), min.max.grid$id)
   # 
@@ -53,6 +79,7 @@ train_test_split <- function(data, train.prop=2/3) {
   # id.train <- c(sample(id, N.train-length(unique(min.max.grid$id))),
   #               min.max.grid$id)
   # id.test <- id[-which(id %in% id.train)]
+  
   
   ### train, test split => train set에 없는 time point 포함시 에러
   # range(test set) > range(train set) => 넘는 부분에 해당하는 id 제거
@@ -157,18 +184,28 @@ get_id_test_oob <- function(X.train, X.test, boot.ind) {
 }
 
 
-### Fit FPCA and make data using FPC scores
-fit_FPCA <- function(X.train, X.test, y.train, y.test, boot.ind=NULL) {
+### Fit FPCA
+fit_FPCA <- function(Ly, Lt) {
+  fpca.fit <- FPCA(Ly, 
+                   Lt, 
+                   optns=list(dataType="Sparse",
+                              methodXi="CE",
+                              # kernel="epan",
+                              # methodSelectK="BIC",
+                              FVEthreshold=0.99,
+                              verbose=F))
+  
+  return(fpca.fit)
+}
+
+
+### make data using FPC scores
+get_FPCscore <- function(X.train, X.test, y.train, y.test, boot.ind=NULL) {
   if (is.null(boot.ind)) {
     ## Not bootstrap (Don't have boot.ind)
     # fit FPCA for training set
-    fpca.fit <- FPCA(X.train$Ly, 
-                     X.train$Lt, 
-                     optns=list(dataType="Sparse",
-                                methodXi="CE",
-                                # methodSelectK="BIC",
-                                FVEthreshold=0.99,
-                                verbose=F))
+    fpca.fit <- fit_FPCA(X.train$Ly, 
+                         X.train$Lt)
     k <- fpca.fit$selectK   # optimal number of PCs
     fpc.score <- fpca.fit$xiEst
     
@@ -195,13 +232,8 @@ fit_FPCA <- function(X.train, X.test, y.train, y.test, boot.ind=NULL) {
     id.oob <- id_test_oob$id.oob
     
     # fit FPCA for bootstrapped data
-    fpca.fit <- FPCA(X.train$Ly[boot.ind], 
-                     X.train$Lt[boot.ind], 
-                     optns=list(dataType="Sparse",
-                                methodXi="CE",
-                                # methodSelectK="BIC",
-                                FVEthreshold=0.99,
-                                verbose=F))
+    fpca.fit <- fit_FPCA(X.train$Ly[boot.ind], 
+                         X.train$Lt[boot.ind])
     k <- fpca.fit$selectK   # optimal number of PCs
     fpc.score <- fpca.fit$xiEst
     
@@ -344,7 +376,7 @@ agg_classif <- function(pred, method) {
 ### Single classifier
 get_single_err <- function(X.train, X.test, y.train, y.test) {
   # obtain FPC scores of train and test data
-  fit.fpc <- fit_FPCA(X.train, X.test, y.train, y.test)
+  fit.fpc <- get_FPCscore(X.train, X.test, y.train, y.test)
   train.fpc <- fit.fpc$train.fpc
   test.fpc <- fit.fpc$test.fpc
   k <- fit.fpc$k
@@ -385,7 +417,7 @@ get_single_err <- function(X.train, X.test, y.train, y.test) {
 ### Bagging classifier
 get_bag_err <- function(X.train, X.test, y.train, y.test, B = 100, packages = c("fdapace","e1071","MASS"), hyper.para) {
   # list of manual functions
-  ftns <- c("fit_FPCA","get_id_test_oob","fit_classif","predict_classif")
+  ftns <- c("fit_FPCA","get_FPCscore","get_id_test_oob","fit_classif","predict_classif")
   
   N <- length(X.train$Ly)
   boot.mat <- matrix(sample(1:N, N*B, replace=T), N, B)   # index of bootstrap samples
@@ -395,7 +427,7 @@ get_bag_err <- function(X.train, X.test, y.train, y.test, B = 100, packages = c(
     boot.ind <- boot.mat[, b]
     
     # obtain FPC scores of train, test, OOB data
-    fit.fpc <- fit_FPCA(X.train, X.test, y.train, y.test, boot.ind=boot.ind)
+    fit.fpc <- get_FPCscore(X.train, X.test, y.train, y.test, boot.ind=boot.ind)
     train.fpc <- fit.fpc$train.fpc
     test.fpc <- fit.fpc$test.fpc
     oob.fpc <- fit.fpc$oob.fpc
