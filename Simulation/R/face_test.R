@@ -1,4 +1,5 @@
 library(tidyverse)
+library(face)
 
 ### load data and preprocessing
 data <- read.csv("Simulation/data/spnbmd.csv", header=T)
