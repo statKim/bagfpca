@@ -32,11 +32,15 @@ colnames(data) <- c("y","id","time","val")
 
 
 ### construct classification models
-result <- list()
+result <- list()   # error rate result
+simm <- 0      # loop index
+num.sim <- 0   # number of simulations
 set.seed(1000)
-seed <- sample(1:10000, 100)
-for (simm in 1:100) {
+seed <- sample(1:10000, 1000)
+# for (simm in 1:100) {
+while (num.sim < 100) {
   # simm <- 10
+  simm <- simm + 1
   print( paste(simm, ":", seed[simm]) )
   set.seed(seed[simm])
   
@@ -52,10 +56,30 @@ for (simm in 1:100) {
   t.grid <- train_test$t.grid
   
   ### Single classifier
-  err.single <- get_single_err(X.train, X.test, y.train, y.test, t.grid)
+  err.single <- tryCatch({ 
+    get_single_err(X.train, X.test, y.train, y.test, t.grid)
+  }, error = function(e) {
+    print(e)
+    return(FALSE) 
+  })
+  # check that error occurs
+  if ( isFALSE(err.single) ) {
+    next
+  }
   
   ### Bagging
-  err.bag <- get_bag_err(X.train, X.test, y.train, y.test, t.grid, B = 300, packages = packages, hyper.para = err.single$hyper.para)
+  err.bag <- tryCatch({ 
+    get_bag_err(X.train, X.test, y.train, y.test, t.grid, B = 200, packages = packages, hyper.para = err.single$hyper.para)
+  }, error = function(e) {
+    print(e)
+    return(FALSE) 
+  })
+  # check that error occurs
+  if ( isFALSE(err.bag) ) {
+    next
+  } else {
+    num.sim <- num.sim + 1
+  }
   
   end.time <- Sys.time()
   print(end.time - start.time)
@@ -67,7 +91,31 @@ for (simm in 1:100) {
   colnames(res) <- c("Logit","SVM(Linear)","SVM(Gaussian)","LDA","QDA","NaiveBayes")
   
   result[[simm]] <- res
+  
+  ## plot of bagging
+  # error rate of different number of models
+  B <- 200
+  p1 <- data.frame(num=1:B,
+                   err.bag$err$majority) %>% 
+    gather("model", "error", -num) %>% 
+    ggplot(aes(num, error, color=model)) +
+    geom_line() +
+    theme_bw() +
+    ggtitle("Majority vote") +
+    geom_hline(yintercept=min(err.single$err.single), size=1.5)
+  p2 <- data.frame(num=1:B,
+                   err.bag$err$oob) %>% 
+    gather("model", "error", -num) %>% 
+    ggplot(aes(num, error, color=model)) +
+    geom_line() +
+    theme_bw() +
+    ggtitle("OOB error weighted vote") +
+    geom_hline(yintercept=min(err.single$err.single), size=1.5)
+  gridExtra::grid.arrange(p1, p2)
 }
+
+save(result, file="RData/real_data_1_FACE.RData")
+
 
 ## 결과 정리
 result <- result[!sapply(result, is.null)]

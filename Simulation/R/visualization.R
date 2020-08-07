@@ -17,9 +17,11 @@ for (i in 1:6) {
   assign(paste("p_", i, sep=""),
          ggplot(res, aes(x=Model, y=Error)) +
            geom_boxplot() +
+           geom_hline(yintercept = median(res$Error[res$Model == "OOB_weight"]), color="red", size=0.7) +
            scale_x_discrete(limits=c("Single", "Majority", "OOB_weight")) +
            xlab("") +
-           ylab("Classification error rate") +
+           # ylab("Classification error rate") +
+           ylab("") +
            ggtitle(model_name[i]) +
            theme_bw())
 }
