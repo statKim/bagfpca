@@ -8,6 +8,8 @@ require(fdapace)      # functional PCA
 require(e1071)        # SVM, Naive bayes
 require(MASS)         # LDA, QDA
 require(data.table)   # list rbind
+require(randomForest)
+require(gbm)
 
 ### majority voting functon
 majority_vote <- function(v) {
@@ -217,7 +219,7 @@ get_FPCscore <- function(X.train, X.test, y.train, y.test, boot.ind=NULL) {
     # test FPC scores
     fpc.score.test <- predict(fpca.fit, X.test$Ly, X.test$Lt, K=k, xiMethod="CE")
     test.fpc <- data.frame(y = y.test, 
-                           x = fpc.score.test)
+                           x = fpc.score.test$scores)
     colnames(test.fpc) <- c("y", paste("FPC", 1:k, sep=""))
     
     return(list(train.fpc = train.fpc,
@@ -250,7 +252,7 @@ get_FPCscore <- function(X.train, X.test, y.train, y.test, boot.ind=NULL) {
                               K=k, 
                               xiMethod="CE")
     test.fpc <- data.frame(y = y.test[test.ind],
-                           x = fpc.score.test)
+                           x = fpc.score.test$scores)
     colnames(test.fpc) <- c("y", paste("FPC", 1:k, sep=""))
     
     # OOB FPC scores
@@ -261,7 +263,7 @@ get_FPCscore <- function(X.train, X.test, y.train, y.test, boot.ind=NULL) {
                              K=k,
                              xiMethod="CE")
     oob.fpc <- data.frame(y = y.train[oob.ind],
-                          x = fpc.score.oob)
+                          x = fpc.score.oob$scores)
     colnames(oob.fpc) <- c("y", paste("FPC", 1:k, sep=""))
     
     return(list(train.fpc = train.fpc,
@@ -406,6 +408,8 @@ get_single_err <- function(X.train, X.test, y.train, y.test) {
   # sens_spec <- apply(pred, 2, get_sens_spec, y.test)
   
   return(list(err.single = err.single,
+              scores = list(train.fpc = train.fpc,   # FPC scores of train, test set
+                            test.fpc = test.fpc),
               model = fit,   # fitted model objects
               pred = pred,   # prediction
               hyper.para = list(tune.linear = tune.linear,
@@ -513,6 +517,44 @@ get_bag_err <- function(X.train, X.test, y.train, y.test, B = 100, packages = c(
               err = list(majority = err.majority,
                          oob = err.oob),
               y.pred = y.pred))
+}
+
+
+### Other ensemble classifier to contrast
+get_ensemble_err <- function(train.fpc, test.fpc, seed=1000, para=list(randomForest = list(ntree = 1000),
+                                                                       gbm = list(n.trees = 1000,
+                                                                                  shrinkage = 0.01,
+                                                                                  cv.folds = 5))) {
+  # randomForest parameters
+  ntree <- para$randomForest$ntree
+  
+  # gbm parameters
+  n.trees <- para$gbm$n.trees
+  shrinkage <- para$gbm$shrinkage
+  cv.folds <- para$gbm$cv.folds
+  
+  set.seed(seed)
+  
+  ## fit random forest
+  rf.fit <- randomForest(y~., train.fpc, ntree=1000)
+  pred.rf <- predict(rf.fit, test.fpc)
+  err.rf <- mean(test.fpc$y != pred.rf)
+  
+  ## fit gradient boosting
+  # transform factor type response to numeric type
+  train.fpc.num <- train.fpc %>% 
+    mutate(y = as.numeric(y) - 1)
+  test.fpc.num <- test.fpc %>% 
+    mutate(y = as.numeric(y) - 1)
+  gbm.fit <- gbm(y~., data=train.fpc.num, shrinkage=shrinkage, distribution="bernoulli", cv.folds=cv.folds, n.trees=n.trees)
+  best.iter <- gbm.perf(gbm.fit, method="cv")   # best iteration (hyperparameter)
+  pred.gbm <- predict(gbm.fit, test.fpc.num, n.trees=best.iter, type="response")  # predict
+  pred.gbm <- ifelse(pred.gbm > 0.5, 1, 0) %>% 
+    factor(levels=c(0, 1))
+  err.gbm <- mean(test.fpc$y != pred.gbm)
+  
+  return(data.frame(RF = err.rf,
+                    GBM = err.gbm))
 }
 
 

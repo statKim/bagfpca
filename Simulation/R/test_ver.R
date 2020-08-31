@@ -55,6 +55,14 @@ for (simm in 1:100) {
   ### Bagging
   err.bag <- get_bag_err(X.train, X.test, y.train, y.test, B = 100, packages = packages, hyper.para = err.single$hyper.para)
   
+  ### Other ensemble models (to compararison)
+  train.fpc <- err.single$scores$train.fpc
+  test.fpc <- err.single$scores$test.fpc
+  err.ensemble <- get_ensemble_err(train.fpc, test.fpc, seed=seed[simm], para=list(randomForest = list(ntree = 1000),
+                                                                                   gbm = list(n.trees = 1000,
+                                                                                              shrinkage = 0.01,
+                                                                                              cv.folds = 5)))
+    
   end.time <- Sys.time()
   print(end.time - start.time)
   
@@ -64,8 +72,14 @@ for (simm in 1:100) {
                              err.oob = err.bag$err.oob))
   colnames(res) <- c("Logit","SVM(Linear)","SVM(Gaussian)","LDA","QDA","NaiveBayes")
   
+  # combine other ensemble model's error to compare
+  res <- cbind(res,
+               err.ensemble)
+
   result[[simm]] <- res
 }
+
+# save(result, file="RData/real_data_2_RF_GBM.RData")
 
 ## 결과 정리
 result <- result[!sapply(result, is.null)]
@@ -85,7 +99,7 @@ res <- sapply(1:3, function(i){
 }) %>% 
   t() %>% 
   as.data.frame
-colnames(res) <- c("Logit","SVM(Linear)","SVM(Gaussian)","LDA","QDA","NaiveBayes")
+colnames(res) <- c("Logit","SVM(Linear)","SVM(Gaussian)","LDA","QDA","NaiveBayes","RandomForest","GBM")
 rownames(res) <- c("Single","Majority vote","OOB weight")
 res
 
@@ -119,14 +133,23 @@ res
 
 
 ## other ensemble methods
+### train, test split
+train_test <- train_test_split(data, train.prop = 2/3)
+X.train <- train_test$X.train
+X.test <- train_test$X.test
+y.train <- train_test$y.train
+y.test <- train_test$y.test
+fit.fpc <- get_FPCscore(X.train, X.test, y.train, y.test)
+train.fpc <- fit.fpc$train.fpc
+test.fpc <- fit.fpc$test.fpc
+
 library(ranger)
-rf.fit <- ranger(y~., train.fpc, num.trees=100)
+rf.fit <- ranger(y~., train.fpc, num.trees=1000)
 pred <- predict(rf.fit, test.fpc)
 mean(test.fpc$y != pred$predictions)
 
 library(randomForest)
-set.seed(100)
-rf.fit <- randomForest(y~., train.fpc, ntree=100)
+rf.fit <- randomForest(y~., train.fpc, ntree=1000)
 rf.fit
 plot(rf.fit)
 pred <- predict(rf.fit, test.fpc)
