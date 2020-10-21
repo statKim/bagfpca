@@ -413,7 +413,8 @@ get_single_err <- function(X.train, X.test, y.train, y.test) {
               model = fit,   # fitted model objects
               pred = pred,   # prediction
               hyper.para = list(tune.linear = tune.linear,
-                                tune.radial = tune.radial)))
+                                tune.radial = tune.radial),
+              K = k))
 }
 
 
@@ -468,7 +469,8 @@ get_bag_err <- function(X.train, X.test, y.train, y.test, B = 100, packages = c(
                                    oob.svm.radial = oob.error[3],
                                    oob.lda = oob.error[4],
                                    oob.qda = oob.error[5],
-                                   oob.nb = oob.error[6])) )
+                                   oob.nb = oob.error[6]),
+                 K = k) )
   }
   
   # calculate error rate for different number of aggregated models

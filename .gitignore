@@ -1,6 +1,4 @@
 .Rhistory
-build/
-CSAM/
 *.tex
 *.pdf
 .Rproj.user
