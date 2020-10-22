@@ -27,10 +27,10 @@ packages <- c("fdapace","e1071","MASS","tidyverse")   # foreach에서 사용할 
 sim_model <- "A"   # different mean and variance
 # sim_model <- "B"   # different mean
 # sim_model <- "C"   # different variance
-p <- 0.5   # class proportion
+p <- 0.5           # class proportion
 result <- list()   # error rate result
-simm <- 0      # loop index
-num.sim <- 0   # number of simulations
+simm <- 0          # loop index
+num.sim <- 0       # number of simulations
 while (num.sim < 500) {
   start.time <- Sys.time()
   
@@ -92,11 +92,11 @@ while (num.sim < 500) {
   
   # 10개마다 RData 저장
   if (num.sim %% 10 == 0) {
-    save(result, file=paste("RData/sim_", sim_model, ".RData", sep=""))
+    save(result, file=paste("RData/simulation_1_", sim_model, ".RData", sep=""))
   }
 }
 
-save(result, file=paste("RData/sim_", sim_model, ".RData", sep=""))
+save(result, file=paste("RData/simulation_1_", sim_model, ".RData", sep=""))
 
 
 
@@ -126,6 +126,5 @@ single.K <- sapply(result[!sapply(result, is.null)],
                    function(x){ x$single.K })
 bag.K <- lapply(result[!sapply(result, is.null)],
                 function(x){ x$bag.K })
-
 
 
