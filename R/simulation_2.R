@@ -25,8 +25,8 @@ packages <- c("fdapace","e1071","MASS","tidyverse")   # foreach에서 사용할 
 
 
 # res.sim <- list()  # classification result of each bootstrap resamples
-sim_model <- "A"
-# sim_model <- "B"
+# sim_model <- "A"
+sim_model <- "B"
 # sim_model <- "C"
 result <- list()   # error rate result
 simm <- 0          # loop index
@@ -40,70 +40,10 @@ while (num.sim < 500) {
   ### generate the simulated dataset
   set.seed(simm)
   n <- 200   # number of observations
-  j <- 1:50  # number of basis
-  
-  # parameters when generate class label
-  b <- matrix(ifelse(j <= 2, 1, (j-2)^(-3)), ncol=1)
-  
-  ## generate curves
-  data <- list()
-  for (i in 1:n) {
-    # random sparsify
-    num.obs <- sample(10:20, 1)
-    t <- sort(runif(num.obs, 0, 10))
-    
-    # 101~200 are test set
-    if (i > 100) {
-      range.train <- range(unlist(data$Lt[1:100]))
-      while( (max(t) > range.train[2]) | (min(t) < range.train[1]) ) {
-        t <- sort(runif(num.obs, 0, 10))
-      }
-    }
-    
-    # eigenfunctions
-    phi <- sapply(j, function(x){
-      if (x %% 2 == 0) {
-        sqrt(1/5)*sin(pi*t*x/5)
-      } else {
-        sqrt(1/5)*cos(pi*t*x/5)
-      }
-    })
-    
-    # generate PC scores
-    xi <- sapply(j, function(x){ rnorm(1, 0, sqrt( x^(-1.5) )) })
-    
-    # parameters when generate class label
-    beta.1 <- phi %*% b
-    beta.2 <- matrix(sqrt(3/10)*(t/5-1), ncol=1)
-    
-    # measurement error
-    eps <- rnorm(num.obs, 0, sqrt(0.1))
-    
-    # generate the curve
-    X <- xi %*% t(phi) + eps
-    
-    # generate class label
-    eps <- rnorm(1, 0, sqrt(0.1))   # model error
-    if (sim_model == "A") {
-      fx <- exp((X %*% beta.1)/2)-1   # model 2
-    } else if (sim_model == "B") {
-      fx <- atan(pi*(X %*% beta.1)) + exp((X %*% beta.2)/3) - 1    # model 4
-    } else {
-      fx <- atan(pi*(X %*% beta.1)/4)
-    }
-    # fx <- sin(pi*(X %*% beta.1)/4)  # model 1
-    # fx <- sin(pi*(X %*% beta.1)/3) + exp((X %*% beta.2)/3) - 1   # model 3
-    # fx <- atan(pi*(X %*% beta.1)) + exp((X %*% beta.2)/3) - 1    # model 4
-    y <- factor(ifelse(fx + eps < 0, 0, 1), levels=c(0, 1))
-    
-    data$id[[i]] <- rep(i, num.obs)
-    data$y[[i]] <- rep(y, num.obs)
-    data$Lt[[i]] <- t
-    data$Ly[[i]] <- X
-  }
+  data <- sim.curve.2(n, sparsity=10:20, model=sim_model, split.prop=0.5)
   
   # # plot the generated curves
-  # sapply(data, unlist) %>% 
+  # sapply(data$data, unlist) %>% 
   #   data.frame() %>% 
   #   mutate(y = ifelse(unlist(data$y) == 0, "G1", "G2")) %>% 
   #   ggplot(aes(x=Lt, y=Ly, group=id, color=y)) +
@@ -116,8 +56,9 @@ while (num.sim < 500) {
   
   ### train, test split => train: 1~100, test: 101~200
   id <- 1:n
-  ind.train <- 1:100
-  ind.test <- 101:200
+  ind.train <- data$ind.train
+  ind.test <- data$ind.test
+  data <- data$data
   
   # split to train, test set
   y <- sapply(data$y, unique)
@@ -209,4 +150,7 @@ single.K <- sapply(result[!sapply(result, is.null)],
                    function(x){ x$single.K })
 bag.K <- lapply(result[!sapply(result, is.null)],
                 function(x){ x$bag.K })
-
+range(single.K)
+mean(single.K)
+range(unlist(bag.K))
+mean(unlist(bag.K))

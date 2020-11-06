@@ -640,3 +640,76 @@ sim.curve <- function(n, sparsity=5:10, model="A", prop=0.5) {
 
   return(data)
 }
+
+
+### generate sparse functional data
+# model A, B, C
+sim.curve.2 <- function(n, sparsity=10:20, model="A", split.prop=0.5) {
+  n <- 200   # number of observations
+  n_train <- ceiling(n*split.prop)
+  j <- 1:50  # number of basis
+  
+  # parameters when generate class label
+  b <- matrix(ifelse(j <= 2, 1, (j-2)^(-3)), ncol=1)
+  
+  ## generate curves
+  data <- list()
+  for (i in 1:n) {
+    # random sparsify
+    num.obs <- sample(sparsity, 1)
+    t <- sort(runif(num.obs, 0, 10))
+    
+    # (n_train+1)~n are test set
+    if (i > n_train) {
+      range.train <- range(unlist(data$Lt[1:100]))
+      while( (max(t) > range.train[2]) | (min(t) < range.train[1]) ) {
+        t <- sort(runif(num.obs, 0, 10))
+      }
+    }
+    
+    # eigenfunctions
+    phi <- sapply(j, function(x){
+      if (x %% 2 == 0) {
+        sqrt(1/5)*sin(pi*t*x/5)
+      } else {
+        sqrt(1/5)*cos(pi*t*x/5)
+      }
+    })
+    
+    # generate PC scores
+    xi <- sapply(j, function(x){ rnorm(1, 0, sqrt( x^(-1.5) )) })
+    
+    # parameters when generate class label
+    beta.1 <- phi %*% b
+    beta.2 <- matrix(sqrt(3/10)*(t/5-1), ncol=1)
+    
+    # measurement error
+    eps <- rnorm(num.obs, 0, sqrt(0.1))
+    
+    # generate the curve
+    X <- xi %*% t(phi) + eps
+    
+    # generate class label
+    eps <- rnorm(1, 0, sqrt(0.1))   # model error
+    if (sim_model == "A") {
+      fx <- exp((X %*% beta.1)/2)-1   # model 2
+    } else if (sim_model == "B") {
+      fx <- atan(pi*(X %*% beta.1)) + exp((X %*% beta.2)/3) - 1    # model 4
+    } else {
+      fx <- atan(pi*(X %*% beta.1)/4)
+    }
+    # fx <- sin(pi*(X %*% beta.1)/4)  # model 1
+    # fx <- sin(pi*(X %*% beta.1)/3) + exp((X %*% beta.2)/3) - 1   # model 3
+    # fx <- atan(pi*(X %*% beta.1)) + exp((X %*% beta.2)/3) - 1    # model 4
+    y <- factor(ifelse(fx + eps < 0, 0, 1), levels=c(0, 1))
+    
+    data$id[[i]] <- rep(i, num.obs)
+    data$y[[i]] <- rep(y, num.obs)
+    data$Lt[[i]] <- t
+    data$Ly[[i]] <- X
+  }
+  
+  return(list(data=data,
+              ind.train=1:n_train,
+              ind.test=(n_train+1):n))
+}

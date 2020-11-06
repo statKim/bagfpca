@@ -24,8 +24,8 @@ packages <- c("fdapace","e1071","MASS","tidyverse")   # foreach에서 사용할 
 
 
 ### construct classification models
-sim_model <- "A"   # different mean and variance
-# sim_model <- "B"   # different mean
+# sim_model <- "A"   # different mean and variance
+sim_model <- "B"   # different mean
 # sim_model <- "C"   # different variance
 p <- 0.5           # class proportion
 result <- list()   # error rate result
@@ -126,5 +126,8 @@ single.K <- sapply(result[!sapply(result, is.null)],
                    function(x){ x$single.K })
 bag.K <- lapply(result[!sapply(result, is.null)],
                 function(x){ x$bag.K })
-
+range(single.K)
+mean(single.K)
+range(unlist(bag.K))
+mean(unlist(bag.K))
 

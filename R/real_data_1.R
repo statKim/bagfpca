@@ -2,7 +2,7 @@
 ### Real data analysis
 ###   Spinal bone mineral density data
 #########################################
-setwd("C:\\Users\\user\\Desktop\\KHS\\bagfpca\\Thesis")
+setwd("C:/Users/user/Desktop/KHS/bagfpca")
 
 library(tidyverse)
 library(doParallel)   # parallel computing
@@ -14,7 +14,7 @@ library(xtable)
 source("R/bagFPCA.R")
 
 # parallel computing setting
-ncores <- detectCores() - 1
+ncores <- detectCores() - 3
 registerDoParallel(ncores)
 
 packages <- c("fdapace","e1071","MASS")   # foreach에서 사용할 package 정의
@@ -62,9 +62,10 @@ colnames(data) <- c("y","id","time","val")
 
 ### construct classification models
 result <- list()
+num.sim <- 0
 set.seed(1000)
-seed <- sample(1:10000, 100)
-for (simm in 1:100) {
+seed <- sample(1:10000, 1000)
+for (simm in 1:500) {
   print( paste(simm, ":", seed[simm]) )
   set.seed(seed[simm])
   
@@ -90,32 +91,32 @@ for (simm in 1:100) {
   # save result
   res <- as.data.frame(rbind(err.single = err.single$err.single,
                              err.majority = err.bag$err.majority,
-                             err.oob = err.bag$err.oob,
-                             # sensitivity and specificity
-                             sens.single = err.single$sensitivitiy,
-                             spec.single = err.single$specificity,
-                             sens.major = err.bag$sens.major,
-                             spec.major = err.bag$spec.major,
-                             sens.oob = err.bag$sens.oob,
-                             spec.oob = err.bag$spec.oob))
+                             err.oob = err.bag$err.oob))
   colnames(res) <- c("Logit","SVM(Linear)","SVM(Gaussian)","LDA","QDA","NaiveBayes")
   
-  result[[simm]] <- res
+  result[[simm]] <- list(error = res,
+                         single.K = err.single$K,   # number of PCs
+                         bag.K = sapply(err.bag$y.pred, function(x){ x$K }))   # number of PCs
+  
+  # save RData per 10 times
+  num.sim <- num.sim + 1
+  if (num.sim %% 10 == 0) {
+    save(result, file="RData/result_spnbmd.RData")
+  }
 }
 
-save(result, file="RData/real_data_1_modify.RData")
+save(result, file="RData/result_spnbmd.RData")
 
-## 결과 정리
-result <- result[!sapply(result, is.null)]
 
-res <- sapply(1:9, function(i){
-  paste(lapply(result, function(x){ x[i, ]*100 }) %>% 
+# avg error rate and standard error
+res <- sapply(1:3, function(i){
+  paste(lapply(result[!sapply(result, is.null)], function(x){ x$error[i, ]*100 }) %>% 
           rbindlist %>% 
           colMeans %>% 
           round(2),
         " (",
         apply(lapply(result[!sapply(result, is.null)], 
-                     function(x){ x[i, ]*100 }) %>% 
+                     function(x){ x$error[i, ]*100 }) %>% 
                 rbindlist, 2, sd) %>% 
           round(2),
         ")",
@@ -125,8 +126,16 @@ res <- sapply(1:9, function(i){
   as.data.frame
 colnames(res) <- c("Logit","SVM(Linear)","SVM(Gaussian)","LDA","QDA","NaiveBayes")
 rownames(res) <- c("Single","Majority vote","OOB weight")
-res
+print(res)
 
-xtable(res)
 
+# number of selected PCs
+single.K <- sapply(result[!sapply(result, is.null)],
+                   function(x){ x$single.K })
+bag.K <- lapply(result[!sapply(result, is.null)],
+                function(x){ x$bag.K })
+range(single.K)
+mean(single.K)
+range(unlist(bag.K))
+mean(unlist(bag.K))
 
