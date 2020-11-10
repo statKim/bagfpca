@@ -1,6 +1,9 @@
+setwd("C:/Users/user/Desktop/KHS/bagfpca")
 library(tidyverse)
 library(gridExtra)
 library(fdapace)
+source("R/bagFPCA.R")
+
 ######################################
 ### Trajactories of simulated data
 ######################################
@@ -59,7 +62,7 @@ ggsave(file="img/sim_1.eps", g, width=15, height=5)
 
 
 # randomly selected trajectories
-num_curve <- 10
+num_curve <- 5
 for (sim_model in c("A","B","C")) {
   set.seed(simm)
   data <- sim.curve(200, sparsity=5:10, model=sim_model, prop=p)
@@ -104,9 +107,11 @@ for (sim_model in c("A","B","C")) {
   # each trajectories and mean curve for each groups  
   assign(paste("fig_", sim_model, sep=""),
          ggplot() +
-           geom_line(data=data, aes(x=time, y=val, group=id, color=y), linetype="dashed") +
+           geom_line(data=data, aes(x=time, y=val, group=id, color=y)) +
            geom_point(data=data, aes(x=time, y=val, group=id, color=y), size=1.3) +
-           geom_line(data=mean_curve, aes(x=time, y=val, color=y), size=1.3) +
+           # geom_line(data=data, aes(x=time, y=val, group=id, color=y), linetype="dashed") +
+           # geom_point(data=data, aes(x=time, y=val, group=id, color=y), size=1.3) +
+           # geom_line(data=mean_curve, aes(x=time, y=val, color=y), size=1.3) +
            xlab("") +
            ylab("") +
            ggtitle(paste("Model", sim_model)) +

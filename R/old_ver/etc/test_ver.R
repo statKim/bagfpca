@@ -82,10 +82,8 @@ for (simm in 1:100) {
 # save(result, file="RData/real_data_2_RF_GBM.RData")
 
 ## 결과 정리
-result <- result[!sapply(result, is.null)]
-
 res <- sapply(1:3, function(i){
-  paste(lapply(result, function(x){ x[i, ]*100 }) %>% 
+  paste(lapply(result[!sapply(result, is.null)], function(x){ x[i, ]*100 }) %>% 
           rbindlist %>% 
           colMeans %>% 
           round(2),
