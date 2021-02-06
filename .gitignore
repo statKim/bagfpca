@@ -3,4 +3,10 @@
 *.tex
 *.pdf
 .Rproj.user
-source/
+
+# Directory
+R/
+Rmd/
+RData/
+package_ver/
+img/
