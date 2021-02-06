@@ -5,8 +5,9 @@
 .Rproj.user
 
 # Directory
-R/
+old_ver/
+source/
 Rmd/
-RData/
 package_ver/
-img/
+sim_100/
+data/
