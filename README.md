@@ -1,6 +1,6 @@
 # Bootstrap aggregated classification for sparse functional data
 
-> Hyunsung Kim & Yaeji Lim. (2021), Bootstrap aggregated classification for sparse functional data, *Journal of Applied Statistics*, https://doi.org/10.1080/02664763.2021.1889997
+> Hyunsung Kim & Yaeji Lim. (2021). Bootstrap aggregated classification for sparse functional data. *Journal of Applied Statistics*, In press. https://doi.org/10.1080/02664763.2021.1889997
 
 
 ## Description
